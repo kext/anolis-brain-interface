@@ -93,8 +93,8 @@ The following parts are needed for the development.
 
 Part               | Supplier | Order Number
 -------------------|----------|---------------------
-nRF52840-DK        | Mouser   | 949-NRF52840-DK
-nRF52840-Dongle    | Mouser   | 949-NRF52840-DONGLE
-Setebos-I          | Farnell  | 3868806
-TPS610994YFFR      | Mouser   | 595-TPS610994YFFR
-VLS201610CX-2R2M-1 | Mouser   | 810-VLS201610CX2R2M1
+nRF52840-DK        | Mouser   | [949-NRF52840-DK](https://www.mouser.de/c/?q=949-NRF52840-DK)
+nRF52840-Dongle    | Mouser   | [949-NRF52840-DONGLE](https://www.mouser.de/c/?q=949-NRF52840-DONGLE)
+Setebos-I          | Farnell  | [3868806](https://de.farnell.com/search?st=3868806)
+TPS610994YFFR      | Mouser   | [595-TPS610994YFFR](https://www.mouser.de/c/?q=595-TPS610994YFFR)
+VLS201610CX-2R2M-1 | Mouser   | [810-VLS201610CX2R2M1](https://www.mouser.de/c/?q=810-VLS201610CX2R2M1)
