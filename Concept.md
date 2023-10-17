@@ -47,6 +47,11 @@ In addition to the faster SD mode it can also be used via SPI which allows it to
 If a micro SD card is required it will be the biggest consumer of power with peaks in excess of 100mA.
 The power supply must therefore be able to handle this current and should be able to supply at least 300mA to leave enough capacity for the other components.
 
+The micro SD card needs to be inserted into a socket.
+The socket should be as small as possible and use up as little space on the board as possible.
+A good choice will be the Molex socket 47571-0001.
+It leaves enough clearance under the card that it can overlap other components.
+
 ### Power Supply
 
 The system must be powered by batteries to enable a wireless operation.
@@ -87,6 +92,12 @@ Another possibility would be using dynamic range compression, i.e. companding th
 The required operating time dictates how many batteries are required and how big those have to be.
 A longer operating time means bigger or more batteries and thus heavier weight and larger dimensions of the overall system.
 
+### Electrodes
+
+The type, shape, number and dimensions of the electrodes must be known.
+The electrodes influence significantly how the system has to be designed and mounted.
+Possible configurations include mounting the PCB either on the head or on the back of the lizard.
+
 ## Part List
 
 The following parts are needed for the development.
@@ -98,3 +109,4 @@ nRF52840-Dongle    | Mouser   | [949-NRF52840-DONGLE](https://www.mouser.de/c/?q
 Setebos-I          | Farnell  | [3868806](https://de.farnell.com/search?st=3868806)
 TPS610994YFFR      | Mouser   | [595-TPS610994YFFR](https://www.mouser.de/c/?q=595-TPS610994YFFR)
 VLS201610CX-2R2M-1 | Mouser   | [810-VLS201610CX2R2M1](https://www.mouser.de/c/?q=810-VLS201610CX2R2M1)
+47571-0001         | Mouser   | [538-47571-0001](https://www.mouser.de/c/?q=538-47571-0001)

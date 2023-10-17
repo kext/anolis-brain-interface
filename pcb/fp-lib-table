@@ -1,0 +1,5 @@
+(fp_lib_table
+  (version 7)
+  (lib (name "intan")(type "KiCad")(uri "${KIPRJMOD}/lib/intan.pretty")(options "")(descr ""))
+  (lib (name "setebos")(type "KiCad")(uri "${KIPRJMOD}/lib/setebos.pretty")(options "")(descr ""))
+)

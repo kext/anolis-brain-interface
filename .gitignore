@@ -1,6 +1,9 @@
 # Rust
 target/
 
+# KiCad
+*-backups/
+
 # OS Files
 .DS_Store
 ._*
