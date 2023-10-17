@@ -2,4 +2,5 @@
   (version 7)
   (lib (name "intan")(type "KiCad")(uri "${KIPRJMOD}/lib/intan.kicad_sym")(options "")(descr ""))
   (lib (name "setebos")(type "KiCad")(uri "${KIPRJMOD}/lib/setebos.kicad_sym")(options "")(descr ""))
+  (lib (name "sd")(type "KiCad")(uri "${KIPRJMOD}/lib/sd.kicad_sym")(options "")(descr ""))
 )
