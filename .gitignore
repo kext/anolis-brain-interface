@@ -1,0 +1,10 @@
+# Rust
+target/
+
+# OS Files
+.DS_Store
+._*
+*~
+~*
+Thumbs.db
+desktop.ini
