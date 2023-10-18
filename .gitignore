@@ -3,6 +3,9 @@ target/
 
 # KiCad
 *-backups/
+\#*
+fp-info-cache
+*.kicad_prl
 
 # OS Files
 .DS_Store
