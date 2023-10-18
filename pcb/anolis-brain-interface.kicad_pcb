@@ -1,7 +1,7 @@
 (kicad_pcb (version 20221018) (generator pcbnew)
 
   (general
-    (thickness 1.6)
+    (thickness 0.22)
   )
 
   (paper "A4")
@@ -38,7 +38,21 @@
   )
 
   (setup
+    (stackup
+      (layer "F.SilkS" (type "Top Silk Screen"))
+      (layer "F.Paste" (type "Top Solder Paste"))
+      (layer "F.Mask" (type "Top Solder Mask") (color "#804D004D") (thickness 0.05) (material "Polyimide") (epsilon_r 3.2) (loss_tangent 0.004))
+      (layer "F.Cu" (type "copper") (thickness 0.035))
+      (layer "dielectric 1" (type "core") (color "Polyimide") (thickness 0.05) (material "Polyimide") (epsilon_r 3.2) (loss_tangent 0.004))
+      (layer "B.Cu" (type "copper") (thickness 0.035))
+      (layer "B.Mask" (type "Bottom Solder Mask") (color "#804D004D") (thickness 0.05) (material "Polyimide") (epsilon_r 3.2) (loss_tangent 0.004))
+      (layer "B.Paste" (type "Bottom Solder Paste"))
+      (layer "B.SilkS" (type "Bottom Silk Screen"))
+      (copper_finish "None")
+      (dielectric_constraints no)
+    )
     (pad_to_mask_clearance 0)
+    (grid_origin 126 106)
     (pcbplotparams
       (layerselection 0x00010fc_ffffffff)
       (plot_on_all_layers_selection 0x0000000_00000000)
@@ -1038,6 +1052,26 @@
     (stroke (width 0.1) (type default)) (layer "Edge.Cuts") (tstamp e901f1f3-974a-48d3-889f-b0e231ea24eb))
   (gr_arc (start 149 80) (mid 151.12132 80.87868) (end 152 83)
     (stroke (width 0.1) (type default)) (layer "Edge.Cuts") (tstamp ff607349-4cd3-432a-a449-5f2efec68082))
+  (dimension (type orthogonal) (layer "Edge.Cuts") (tstamp 234c9506-48ce-4e6f-9474-63b110befc19)
+    (pts (xy 126 106) (xy 152 106))
+    (height 3)
+    (orientation 0)
+    (gr_text "26.0000 mm" (at 139 107.85) (layer "Edge.Cuts") (tstamp 234c9506-48ce-4e6f-9474-63b110befc19)
+      (effects (font (size 1 1) (thickness 0.15)))
+    )
+    (format (prefix "") (suffix "") (units 3) (units_format 1) (precision 4))
+    (style (thickness 0.1) (arrow_length 1.27) (text_position_mode 0) (extension_height 0.58642) (extension_offset 0.5) keep_text_aligned)
+  )
+  (dimension (type orthogonal) (layer "Edge.Cuts") (tstamp 323aec00-28b5-461c-a31d-11b4ab61980b)
+    (pts (xy 152 80) (xy 152 106))
+    (height 3)
+    (orientation 1)
+    (gr_text "26.0000 mm" (at 153.85 93 90) (layer "Edge.Cuts") (tstamp 323aec00-28b5-461c-a31d-11b4ab61980b)
+      (effects (font (size 1 1) (thickness 0.15)))
+    )
+    (format (prefix "") (suffix "") (units 3) (units_format 1) (precision 4))
+    (style (thickness 0.1) (arrow_length 1.27) (text_position_mode 0) (extension_height 0.58642) (extension_offset 0.5) keep_text_aligned)
+  )
 
   (segment (start 133.6 88.125) (end 133.6 89.725) (width 0.125) (layer "F.Cu") (net 53) (tstamp 9351510e-9fd5-4073-831e-c7c5e82fb9e4))
   (segment (start 143.5 91.75) (end 143.5 93) (width 0.125) (layer "F.Cu") (net 54) (tstamp 7c8f00c7-9ff2-4d5c-b3bf-de233924f3c0))
