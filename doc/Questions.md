@@ -27,6 +27,12 @@ We could include slits at the sides of the PCB to attach a strapping belt.
 
 This determines how much battery capacity is needed.
 
+### Which species of lizard will be examined?
+
+How big are they?
+What is their weight?
+How much can they carry without being impacted?
+
 ## For us
 
 ### Which battery type to use?
