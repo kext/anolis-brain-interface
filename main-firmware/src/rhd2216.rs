@@ -159,7 +159,12 @@ impl SpiBuffers {
                 self.state = State::Rx1;
                 Self::fill_readout_commands(&mut self.tx[0..BUFFER_SIZE]);
                 adjust_pointer(r.txd.ptr.as_ptr(), 0u32.wrapping_sub(OFFSET));
-                adjust_pointer(r.rxd.ptr.as_ptr(), 0u32.wrapping_sub(OFFSET));
+                let n = adjust_pointer(r.rxd.ptr.as_ptr(), 0u32.wrapping_sub(OFFSET))
+                    .wrapping_sub(self.rx1_address()) as usize;
+                // Copy overflow
+                for i in 0..n {
+                    self.rx1[i] = self.rx1[BUFFER_SIZE + i];
+                }
             },
             State::Rx1 => {
                 self.state = State::Rx2;
