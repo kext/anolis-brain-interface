@@ -6,10 +6,10 @@ use embassy_sync::channel::{Channel, ReceiveFuture};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use core::ptr::NonNull;
 use core::marker::PhantomData;
-use core::cell::{RefCell};
+use core::cell::RefCell;
 use core::arch::asm;
 use alloc::vec::Vec;
-use critical_section::{Mutex};
+use critical_section::Mutex;
 
 pub struct RHD2216<'d> {
     // We need two timers.
