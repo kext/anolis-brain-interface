@@ -43,6 +43,14 @@ fn timer2_registers() -> &'static pac::timer2::RegisterBlock {
     unsafe { &*pac::TIMER2::ptr() }
 }
 
+// Functions to generate commands as u16.
+// Most of these intentionally use LE byte order with swapped bytes.
+const fn convert_channel(c: u8) -> u16 { (c as u16).to_le() }
+const fn read_register(r: u8) -> u16 { (r as u16 | 192).to_le() }
+const fn write_register(r: u8, d: u8) -> u16 { (((d as u16) << 8) | (r as u16) | 128).to_le() }
+const fn start_calibration() -> u16 { 0b01010101u16 }
+const fn dummy_command() -> u16 { read_register(40) }
+
 #[derive(PartialEq)]
 enum State {
     Off, // The ADC is stopped.
@@ -84,17 +92,54 @@ impl SpiBuffers {
     fn rx2_address(&self) -> u32 {
         &self.rx2 as *const _ as u32
     }
+    fn fill_startup_commands(b: &mut [u16]) {
+        for i in 0..b.len() {
+            b[i] = match i {
+                // Write all the registers
+                10 => write_register(0, 0b11011110),
+                11 => write_register(1, 8),
+                12 => write_register(2, 32),
+                13 => write_register(3, 0),
+                14 => write_register(4, 0),
+                15 => write_register(5, 0),
+                16 => write_register(6, 0),
+                17 => write_register(7, 0),
+                // Upper Cutoff: 3kHz
+                18 => write_register(8, 3),
+                19 => write_register(9, 1),
+                20 => write_register(10, 13),
+                21 => write_register(11, 1),
+                // Lower Cutoff: 1Hz
+                22 => write_register(12, 44),
+                23 => write_register(13, 6),
+                // Channel Mask
+                24 => write_register(14, (((1 << CHANNEL_COUNT) - 1) & 255) as u8),
+                25 => write_register(15, ((((1 << CHANNEL_COUNT) - 1) >> 8) & 255) as u8),
+                26 => write_register(16, ((((1 << CHANNEL_COUNT) - 1) >> 16) & 255) as u8),
+                27 => write_register(17, ((((1 << CHANNEL_COUNT) - 1) >> 24) & 255) as u8),
+                // Leave at least 100µs before calibration starts
+                200 => start_calibration(),
+                _ => dummy_command(),
+            }
+        }
+    }
+    fn fill_readout_commands(b: &mut [u16]) {
+        for i in 0..b.len() {
+            let n = i % STRIDE;
+            b[i] = if n < CHANNEL_COUNT {
+                convert_channel(n as u8)
+            } else {
+                dummy_command()
+            }
+        }
+    }
     unsafe fn setup(&mut self) {
         let r = spi_registers();
         if self.state != State::Off {
             panic!("Trying to start RHD while it is already running.");
         }
-        for i in 0..BUFFER_SIZE {
-            self.tx[i] = (i as u16).to_be();
-        }
-        for i in 0..OVERFLOW {
-            self.tx[i + BUFFER_SIZE] = (i as u16).to_be();
-        }
+        Self::fill_startup_commands(&mut self.tx[0..BUFFER_SIZE]);
+        Self::fill_readout_commands(&mut self.tx[BUFFER_SIZE..]);
         self.state = State::Starting;
         r.txd.ptr.write(|w| unsafe { w.bits(self.tx_address()) });
         r.txd.maxcnt.write(|w| unsafe { w.maxcnt().bits(2) });
@@ -112,9 +157,7 @@ impl SpiBuffers {
             },
             State::Starting => {
                 self.state = State::Rx1;
-                for i in 0..BUFFER_SIZE {
-                    self.tx[i] = (i as u16).to_be();
-                }
+                Self::fill_readout_commands(&mut self.tx[0..BUFFER_SIZE]);
                 adjust_pointer(r.txd.ptr.as_ptr(), 0u32.wrapping_sub(OFFSET));
                 adjust_pointer(r.rxd.ptr.as_ptr(), 0u32.wrapping_sub(OFFSET));
             },
