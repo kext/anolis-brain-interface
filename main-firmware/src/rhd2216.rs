@@ -112,7 +112,9 @@ impl SpiBuffers {
             },
             State::Starting => {
                 self.state = State::Rx1;
-                // TODO: Update tx buffer
+                for i in 0..BUFFER_SIZE {
+                    self.tx[i] = (i as u16).to_be();
+                }
                 adjust_pointer(r.txd.ptr.as_ptr(), 0u32.wrapping_sub(OFFSET));
                 adjust_pointer(r.rxd.ptr.as_ptr(), 0u32.wrapping_sub(OFFSET));
             },
@@ -169,6 +171,9 @@ pub struct InterruptHandler {
 
 /// Adjust a pointer register in an atomic fashion.
 /// Returns the value the register has been set to.
+/// This is used to access the DMA pointers of the SPI interface.
+/// They should only be modified if there is currently no transaction
+/// happening and the timer is not close to overflowing.
 unsafe fn adjust_pointer(x: *mut u32, n: u32) -> u32 {
     let r = timer1_registers();
     let capture = r.tasks_capture[3].as_ptr() as u32;
@@ -183,9 +188,9 @@ unsafe fn adjust_pointer(x: *mut u32, n: u32) -> u32 {
         "str {t}, [{capture}]",
         "ldr {t}, [{cc}]",
         // Check for range
-        "cmp {t}, #25",
+        "cmp {t}, #25", // Lower bound
         "blt 2b",
-        "cmp {t}, #60",
+        "cmp {t}, #60", // Upper bound
         "bgt 2b",
         // Adjust and store the pointer
         "add {v}, {n}",
