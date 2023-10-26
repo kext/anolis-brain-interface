@@ -21,11 +21,11 @@ You can install it by using the command `cargo install probe-rs --features cli`.
 For debug we are using the `probe-run` tool.
 Install it with `cargo install probe-run`.
 
-After all tools are installed the firmware can be compiled by executing `cargo build` in the firmware directory.
-To build in release mode use `cargo build --release`.
+After all tools are installed the firmware can be compiled by executing `cargo build --release` in the firmware directory.
+The firmware must be built in release mode or it will have performance issues.
 
 You can also run the firmware with an attached debugger.
-To do this use `DEFMT_LOG=trace cargo run`.
+To do this use `DEFMT_LOG=trace cargo run --release`.
 The `DEFMT_LOG` environment variable selects the log level that the firmware prints to the debug terminal.
 It defaults to `error`, so to see all messages we use the value `trace` instead.
 All possible levels in increasing order are `trace`, `debug`, `info`, `warn` and `error`.
