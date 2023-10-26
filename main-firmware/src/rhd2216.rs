@@ -31,6 +31,12 @@ pub struct RHD2216<'d> {
     _spi: PeripheralRef<'d, peripherals::SPI3>,
 }
 
+#[derive(Debug)]
+pub struct RhdData {
+    pub channels: usize,
+    pub frames: Vec<u16>,
+}
+
 fn spi_registers() -> &'static pac::spim3::RegisterBlock {
     unsafe { &*pac::SPIM3::ptr() }
 }
@@ -80,7 +86,7 @@ static SPI_BUFFERS: Mutex<RefCell<SpiBuffers>> = Mutex::new(RefCell::new(SpiBuff
     rx2: [0u16; TOTAL_BUFFER],
     state: State::Off,
 }));
-static CHANNEL: Channel<CriticalSectionRawMutex, Vec<u16>, 4> = Channel::new();
+static CHANNEL: Channel<CriticalSectionRawMutex, RhdData, 4> = Channel::new();
 
 impl SpiBuffers {
     fn tx_address(&self) -> u32 {
@@ -179,13 +185,16 @@ impl SpiBuffers {
                     self.rx2[i] = self.rx1[BUFFER_SIZE + i];
                 }
                 // Generate frame
-                let mut frame = Vec::<u16>::with_capacity(FRAMES_PER_BUFFER * CHANNEL_COUNT);
+                let mut data = RhdData {
+                    channels: CHANNEL_COUNT,
+                    frames: Vec::<u16>::with_capacity(FRAMES_PER_BUFFER * CHANNEL_COUNT),
+                };
                 for f in 0..FRAMES_PER_BUFFER {
                     for c in 0..CHANNEL_COUNT {
-                        frame.push(self.rx1[f * STRIDE + c + 2].to_be());
+                        data.frames.push(self.rx1[f * STRIDE + c + 2].to_be());
                     }
                 }
-                CHANNEL.try_send(frame).unwrap();
+                CHANNEL.try_send(data).unwrap();
             },
             State::Rx2 => {
                 self.state = State::Rx1;
@@ -200,13 +209,16 @@ impl SpiBuffers {
                     self.rx1[i] = self.rx2[BUFFER_SIZE + i];
                 }
                 // Generate frame
-                let mut frame = Vec::<u16>::with_capacity(FRAMES_PER_BUFFER * CHANNEL_COUNT);
+                let mut data = RhdData {
+                    channels: CHANNEL_COUNT,
+                    frames: Vec::<u16>::with_capacity(FRAMES_PER_BUFFER * CHANNEL_COUNT)
+                };
                 for f in 0..FRAMES_PER_BUFFER {
                     for c in 0..CHANNEL_COUNT {
-                        frame.push(self.rx2[f * STRIDE + c + 2].to_be());
+                        data.frames.push(self.rx2[f * STRIDE + c + 2].to_be());
                     }
                 }
-                CHANNEL.try_send(frame).unwrap();
+                CHANNEL.try_send(data).unwrap();
             },
         }
     }
@@ -383,7 +395,7 @@ impl<'d> RHD2216<'d> {
         });
     }
 
-    pub fn read(&mut self) -> ReceiveFuture<'_, CriticalSectionRawMutex, Vec<u16>, 4> {
+    pub fn read(&mut self) -> ReceiveFuture<'_, CriticalSectionRawMutex, RhdData, 4> {
         CHANNEL.receive()
     }
 }

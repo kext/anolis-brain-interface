@@ -134,10 +134,22 @@ async fn main(spawner: Spawner) {
 
     let mut count = 0usize;
     loop {
-        for _ in 0..100 {
-            let v = rhd.read().await;
-            count += v.len();
+        let mut max = u16::MIN;
+        let mut min = u16::MAX;
+        for _ in 0..20 {
+            let d = rhd.read().await;
+            count += d.frames.len();
+            for i in (0..d.frames.len()).step_by(d.channels) {
+                let v = d.frames[i];
+                if v > max {
+                    max = v;
+                }
+                if v < min {
+                    min = v;
+                }
+            }
         }
+        info!("{} {}", min, max);
         info!("{} samples received", count);
         //Timer::after(Duration::from_millis(250)).await;
         //rhd.stop();
