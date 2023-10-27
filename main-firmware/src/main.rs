@@ -7,19 +7,22 @@
 
 extern crate alloc;
 
-use defmt_rtt as _; // global logger
-use embassy_nrf as _; // time driver
+// global logger
+use defmt_rtt as _;
+// time driver
+use embassy_nrf as _;
 use panic_probe as _;
 
-use core::mem;
-
+use futures::pin_mut;
+use futures::future::join;
 use defmt::{info, unwrap};
 use embassy_executor::Spawner;
 use embassy_nrf::{interrupt, bind_interrupts};
 use embassy_nrf::gpio::{Level, Output, OutputDrive, AnyPin};
 use embassy_time::{Duration, Timer};
-use nrf_softdevice::{raw, Softdevice};
 use embedded_alloc::Heap;
+use nrf_softdevice::{raw, Softdevice};
+use nrf_softdevice::ble::{Connection, peripheral, gatt_server};
 
 mod rhd2216;
 use rhd2216::RHD2216;
@@ -51,6 +54,44 @@ async fn blink_task(pin1: AnyPin, pin2: AnyPin, pin3: AnyPin, off: bool) -> ! {
     }
 }
 
+#[nrf_softdevice::gatt_service(uuid = "edb74b42-8347-4285-a102-86f0b64c533c")]
+struct RhdService {
+    #[characteristic(uuid = "5c156371-fefe-4e75-aaa0-1f21188e2a33", read, write)]
+    running: bool,
+    #[characteristic(uuid = "feb7f8e1-c457-4993-b0a0-92dd89a9547c", read, notify)]
+    liveview: [u8; rhd2216::CHANNEL_COUNT * 4],
+}
+
+#[nrf_softdevice::gatt_server]
+struct Server {
+    service: RhdService,
+}
+
+async fn rhd_task<'a>(rhd: &'a mut RHD2216<'_>, server: &'a Server, connection: &'a Connection) {
+    rhd.start();
+    loop {
+        let d = rhd.read().await;
+        let mut lv = [0u8; rhd2216::CHANNEL_COUNT * 4];
+        for i in 0..d.channels {
+            let mut min = u16::MAX;
+            let mut max = u16::MIN;
+            for j in (i..d.frames.len()).step_by(d.channels) {
+                let v = d.frames[j];
+                if v < min { min = v; }
+                if v > max { max = v; }
+            }
+            lv[(i * 4)..(i * 4 + 2)].copy_from_slice(&min.to_le_bytes());
+            lv[(i * 4 + 2)..(i * 4 + 4)].copy_from_slice(&max.to_le_bytes());
+        }
+        match server.service.liveview_notify(&connection, &lv) {
+            Err(gatt_server::NotifyValueError::Disconnected) => break,
+            _ => {},
+        }
+    }
+    info!("Stopping");
+    rhd.stop();
+}
+
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
     info!("Start");
@@ -78,24 +119,31 @@ async fn main(spawner: Spawner) {
         }),
         conn_gap: Some(raw::ble_gap_conn_cfg_t {
             conn_count: 1,
-            event_length: 24,
+            event_length: 40,
         }),
-        conn_gatt: Some(raw::ble_gatt_conn_cfg_t { att_mtu: 256 }),
+        conn_gatt: Some(raw::ble_gatt_conn_cfg_t {
+            att_mtu: 247,
+        }),
+        conn_gatts: Some(raw::ble_gatts_conn_cfg_t {
+            hvn_tx_queue_size: 10,
+        }),
         gatts_attr_tab_size: Some(raw::ble_gatts_cfg_attr_tab_size_t {
-            attr_tab_size: raw::BLE_GATTS_ATTR_TAB_SIZE_DEFAULT.into(),
+            attr_tab_size: raw::BLE_GATTS_ATTR_TAB_SIZE_DEFAULT,
         }),
         gap_role_count: Some(raw::ble_gap_cfg_role_count_t {
-            adv_set_count: raw::BLE_GAP_ADV_SET_COUNT_DEFAULT as u8,
-            periph_role_count: raw::BLE_GAP_ROLE_COUNT_PERIPH_DEFAULT as u8,
-            central_role_count: 3,
+            adv_set_count: 1,
+            periph_role_count: 1,
+            central_role_count: 0,
             central_sec_count: 0,
             _bitfield_1: raw::ble_gap_cfg_role_count_t::new_bitfield_1(0),
         }),
         gap_device_name: Some(raw::ble_gap_cfg_device_name_t {
-            p_value: b"HelloRust" as *const u8 as _,
-            current_len: 9,
-            max_len: 9,
-            write_perm: unsafe { mem::zeroed() },
+            p_value: b"Brain Interface" as *const u8 as _,
+            current_len: 15,
+            max_len: 15,
+            write_perm: raw::ble_gap_conn_sec_mode_t {
+                _bitfield_1: raw::ble_gap_conn_sec_mode_t::new_bitfield_1(1, 1),
+            },
             _bitfield_1: raw::ble_gap_cfg_device_name_t::new_bitfield_1(raw::BLE_GATTS_VLOC_STACK as u8),
         }),
         ..Default::default()
@@ -120,9 +168,9 @@ async fn main(spawner: Spawner) {
     let _rhd_miso: AnyPin = _b4;
 
     let sd = Softdevice::enable(&config);
+    let server = unwrap!(Server::new(sd));
 
     unwrap!(spawner.spawn(softdevice_task(sd)));
-
     unwrap!(spawner.spawn(blink_task(_led1, _led2, _led3, false)));
 
     let mut rhd = RHD2216::new(
@@ -130,28 +178,41 @@ async fn main(spawner: Spawner) {
         p.SPI3, p.TIMER1, p.TIMER2, p.PPI_CH0.into(), p.PPI_CH1.into(),
         _rhd_cs, _rhd_clk, _rhd_mosi, _rhd_miso
     );
-    rhd.start();
 
-    let mut count = 0usize;
+    #[rustfmt::skip]
+    let adv_data = &[
+        0x02, 0x01, raw::BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE as u8,
+        0x03, 0x03, 0x09, 0x18,
+        0x0a, 0x09, b'I', b'n', b't', b'e', b'r', b'f', b'a', b'c', b'e',
+    ];
+    #[rustfmt::skip]
+    let scan_data = &[
+        0x03, 0x03, 0x09, 0x18,
+    ];
+
     loop {
-        let mut max = u16::MIN;
-        let mut min = u16::MAX;
-        for _ in 0..20 {
-            let d = rhd.read().await;
-            count += d.frames.len();
-            for i in (0..d.frames.len()).step_by(d.channels) {
-                let v = d.frames[i];
-                if v > max {
-                    max = v;
-                }
-                if v < min {
-                    min = v;
-                }
+        info!("Waiting for connection");
+        let config = peripheral::Config::default();
+
+        let adv = peripheral::ConnectableAdvertisement::ScannableUndirected { adv_data, scan_data };
+        let conn = unwrap!(peripheral::advertise_connectable(sd, adv, &config).await);
+        info!("advertising done! I have a connection.");
+
+        let rhd_future = rhd_task(&mut rhd, &server, &conn);
+        let gatt_future = gatt_server::run(&conn, &server, |e| match e {
+            ServerEvent::Service(e) => match e {
+                RhdServiceEvent::RunningWrite(_) => {
+                    info!("RunningWrite");
+                },
+                RhdServiceEvent::LiveviewCccdWrite { notifications } => {
+                    info!("Notifications {}", notifications);
+                },
             }
-        }
-        info!("{} {}", min, max);
-        info!("{} samples received", count);
-        //Timer::after(Duration::from_millis(250)).await;
-        //rhd.stop();
+        });
+
+        pin_mut!(rhd_future);
+        pin_mut!(gatt_future);
+
+        join(rhd_future, gatt_future).await;
     }
 }

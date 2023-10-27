@@ -1,3 +1,4 @@
+use defmt::warn;
 use embassy_nrf::{timer, peripherals, pac, Peripheral, PeripheralRef, into_ref, interrupt};
 use embassy_nrf::ppi::{Ppi, AnyConfigurableChannel, Event, Task};
 use embassy_nrf::gpio::{AnyPin, Port, Pin};
@@ -65,11 +66,11 @@ enum State {
     Rx2, // Receiving into buffer rx2.
 }
 
-const CHANNEL_COUNT: usize = 16;
+pub const CHANNEL_COUNT: usize = 16;
 const FRAMES_PER_BUFFER: usize = 100;
 const STRIDE: usize = 20;
 const BUFFER_SIZE: usize = FRAMES_PER_BUFFER * STRIDE;
-const OVERFLOW: usize = BUFFER_SIZE / 10;
+const OVERFLOW: usize = BUFFER_SIZE;
 const TOTAL_BUFFER: usize = BUFFER_SIZE + OVERFLOW;
 const OFFSET: u32 = BUFFER_SIZE as u32 * 2;
 
@@ -86,7 +87,7 @@ static SPI_BUFFERS: Mutex<RefCell<SpiBuffers>> = Mutex::new(RefCell::new(SpiBuff
     rx2: [0u16; TOTAL_BUFFER],
     state: State::Off,
 }));
-static CHANNEL: Channel<CriticalSectionRawMutex, RhdData, 4> = Channel::new();
+static CHANNEL: Channel<CriticalSectionRawMutex, RhdData, 10> = Channel::new();
 
 impl SpiBuffers {
     fn tx_address(&self) -> u32 {
@@ -194,7 +195,10 @@ impl SpiBuffers {
                         data.frames.push(self.rx1[f * STRIDE + c + 2].to_be());
                     }
                 }
-                CHANNEL.try_send(data).unwrap();
+                match CHANNEL.try_send(data) {
+                    Ok(_) => {},
+                    Err(_) => warn!("Frame lost!"),
+                };
             },
             State::Rx2 => {
                 self.state = State::Rx1;
@@ -218,7 +222,10 @@ impl SpiBuffers {
                         data.frames.push(self.rx2[f * STRIDE + c + 2].to_be());
                     }
                 }
-                CHANNEL.try_send(data).unwrap();
+                match CHANNEL.try_send(data) {
+                    Ok(_) => {},
+                    Err(_) => warn!("Frame lost!"),
+                };
             },
         }
     }
@@ -305,7 +312,12 @@ fn timer2_enable_cc0_isr() {
     interrupt::typelevel::TIMER2::set_priority(interrupt::Priority::P2);
     unsafe { interrupt::typelevel::TIMER2::enable(); }
     let r = timer2_registers();
-    r.intenset.write(|w| w.compare0().set());
+    r.intenset.write(|w| w.compare0().set_bit());
+}
+
+fn timer2_disable_cc0_isr() {
+    let r = timer2_registers();
+    r.intenset.write(|w| w.compare0().clear_bit());
 }
 
 impl<'d> RHD2216<'d> {
@@ -326,9 +338,7 @@ impl<'d> RHD2216<'d> {
         let timer2 = timer::Timer::new_counter(timer2);
         let ppi1 = Ppi::new_one_to_one(ppi1, timer1.cc(0).event_compare(), spi_start_task());
         let ppi2 = Ppi::new_one_to_one(ppi2, spi_end_event(), timer2.task_count());
-        timer1.cc(0).short_compare_clear();
-        timer2.cc(0).short_compare_clear();
-        Self {
+        let mut rhd = Self {
             timer1: timer1,
             timer2: timer2,
             ppi1: ppi1,
@@ -338,7 +348,9 @@ impl<'d> RHD2216<'d> {
             mosi: mosi,
             miso: miso,
             _spi: spi,
-        }
+        };
+        rhd.spi_setup();
+        rhd
     }
 
     fn spi_setup(&mut self) {
@@ -376,7 +388,10 @@ impl<'d> RHD2216<'d> {
         critical_section::with(|cs| unsafe {
             SPI_BUFFERS.borrow_ref_mut(cs).setup();
         });
-        self.spi_setup();
+        self.timer1.clear();
+        self.timer2.clear();
+        self.timer1.cc(0).short_compare_clear();
+        self.timer2.cc(0).short_compare_clear();
         self.timer1.cc(0).write(80);
         self.timer2.cc(0).write(2000);
         timer2_enable_cc0_isr();
@@ -386,16 +401,20 @@ impl<'d> RHD2216<'d> {
         self.timer1.start();
     }
 
-    #[allow(dead_code)]
     pub fn stop(&mut self) {
         critical_section::with(|cs| {
             let mut x = SPI_BUFFERS.borrow_ref_mut(cs);
             x.state = State::Off;
             self.timer1.stop();
+            timer2_disable_cc0_isr();
+            self.ppi1.disable();
+            self.ppi2.disable();
         });
+        // Drain channel.
+        while CHANNEL.try_receive().is_ok() {}
     }
 
-    pub fn read(&mut self) -> ReceiveFuture<'_, CriticalSectionRawMutex, RhdData, 4> {
+    pub fn read(&mut self) -> ReceiveFuture<'_, CriticalSectionRawMutex, RhdData, 10> {
         CHANNEL.receive()
     }
 }
