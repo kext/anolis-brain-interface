@@ -19,7 +19,8 @@ How long and thick are the wires?
 
 [FE6215 Stainless Steel AISI 316L Insulated Wire](https://www.advent-rm.com/en-GB/Search?SearchTerm=FE6215)
 
-An alternative would be
+We can not use the Neuropixels without significantly changing the system.
+Also their power consumption and data rate is way too high.
 
 ### What are the frequencies of the signals?
 
@@ -72,3 +73,6 @@ With the lower voltage of the zinc-air button cell of 1.45V vs the 3.3V operatin
 
 We should conduct an experiment where we discharge a number of coin cells with different currents both pulsed and continuously.
 This also can show us the expected operation time for each type of battery.
+
+**Answer:** Without the micro SD card this should be possible.
+With the micro SD card the current is too large.
