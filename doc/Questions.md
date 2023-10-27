@@ -14,7 +14,7 @@ How long and thick are the wires?
 
 ### What are the frequencies of the signals?
 
-This determines the sample rate and cutoff frequency used for the ADC.
+This determines the sample rate and cut off frequency used for the ADC.
 
 ### How and where should the board be attached?
 
