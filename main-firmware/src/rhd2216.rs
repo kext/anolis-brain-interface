@@ -66,9 +66,10 @@ enum State {
     Rx2, // Receiving into buffer rx2.
 }
 
-pub const CHANNEL_COUNT: usize = 16;
+pub const CHANNEL_COUNT: usize = 8;
 const FRAMES_PER_BUFFER: usize = 100;
-const STRIDE: usize = 20;
+const STRIDE: usize = 10;
+const TIMER_INTERVAL: usize = 320;
 const BUFFER_SIZE: usize = FRAMES_PER_BUFFER * STRIDE;
 const OVERFLOW: usize = BUFFER_SIZE;
 const TOTAL_BUFFER: usize = BUFFER_SIZE + OVERFLOW;
@@ -257,13 +258,14 @@ unsafe fn adjust_pointer(x: *mut u32, n: u32) -> u32 {
         // Check for range
         "cmp {t}, #25", // Lower bound
         "blt 2b",
-        "cmp {t}, #60", // Upper bound
+        "cmp {t}, {upper}", // Upper bound
         "bgt 2b",
         // Adjust and store the pointer
         "add {v}, {n}",
         "strex {t}, {v}, [{x}]",
         "cmp {t}, #0",
         "bne 2b",
+        upper = in(reg) TIMER_INTERVAL - 20,
         x = in(reg) x,
         n = in(reg) n,
         capture = in(reg) capture,
@@ -339,14 +341,9 @@ impl<'d> RHD2216<'d> {
         let ppi1 = Ppi::new_one_to_one(ppi1, timer1.cc(0).event_compare(), spi_start_task());
         let ppi2 = Ppi::new_one_to_one(ppi2, spi_end_event(), timer2.task_count());
         let mut rhd = Self {
-            timer1: timer1,
-            timer2: timer2,
-            ppi1: ppi1,
-            ppi2: ppi2,
-            cs: cs,
-            clk: clk,
-            mosi: mosi,
-            miso: miso,
+            timer1, timer2,
+            ppi1, ppi2,
+            cs, clk, mosi, miso,
             _spi: spi,
         };
         rhd.spi_setup();
@@ -392,8 +389,8 @@ impl<'d> RHD2216<'d> {
         self.timer2.clear();
         self.timer1.cc(0).short_compare_clear();
         self.timer2.cc(0).short_compare_clear();
-        self.timer1.cc(0).write(80);
-        self.timer2.cc(0).write(2000);
+        self.timer1.cc(0).write(TIMER_INTERVAL as u32);
+        self.timer2.cc(0).write(BUFFER_SIZE as u32);
         timer2_enable_cc0_isr();
         self.ppi1.enable();
         self.ppi2.enable();
