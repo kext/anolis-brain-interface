@@ -3,8 +3,9 @@ use embassy_nrf::{timer, peripherals, pac, Peripheral, PeripheralRef, into_ref, 
 use embassy_nrf::ppi::{Ppi, AnyConfigurableChannel, Event, Task};
 use embassy_nrf::gpio::{AnyPin, Port, Pin};
 use embassy_nrf::interrupt::typelevel::Interrupt;
-use embassy_sync::channel::{Channel, ReceiveFuture};
+use embassy_sync::channel::Channel;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use futures::Future;
 use core::ptr::NonNull;
 use core::marker::PhantomData;
 use core::cell::RefCell;
@@ -66,13 +67,22 @@ enum State {
     Rx2, // Receiving into buffer rx2.
 }
 
+// Configuration
+// Number of channels.
 pub const CHANNEL_COUNT: usize = 8;
+// How many samples to read from each channel between interrupts.
 const FRAMES_PER_BUFFER: usize = 100;
+// How many commands to send for each frame. Must be at least CHANNEL_COUNT + 2.
 const STRIDE: usize = 10;
+// Number of 16MHz ticks between two commands
 const TIMER_INTERVAL: usize = 320;
+// Size of one full buffer between interrupts.
 const BUFFER_SIZE: usize = FRAMES_PER_BUFFER * STRIDE;
+// How much overflow space to leave after ever buffer.
 const OVERFLOW: usize = BUFFER_SIZE;
+// Total buffer space.
 const TOTAL_BUFFER: usize = BUFFER_SIZE + OVERFLOW;
+// By how many bytes to adjust the DMA pointer. Must be the byte size of one buffer.
 const OFFSET: u32 = BUFFER_SIZE as u32 * 2;
 
 struct SpiBuffers {
@@ -297,8 +307,8 @@ impl interrupt::typelevel::Handler<interrupt::typelevel::TIMER2> for InterruptHa
             embassy_nrf::gpio::Level::High,
             embassy_nrf::gpio::OutputDrive::Standard,
         );
-        let r = timer2_registers();
 
+        let r = timer2_registers();
         if r.events_compare[0].read().bits() != 0 {
             r.events_compare[0].write(|w| w.events_compare().clear_bit());
             critical_section::with(|cs| {
@@ -411,7 +421,7 @@ impl<'d> RHD2216<'d> {
         while CHANNEL.try_receive().is_ok() {}
     }
 
-    pub fn read(&mut self) -> ReceiveFuture<'_, CriticalSectionRawMutex, RhdData, 10> {
+    pub fn read(&mut self) -> impl Future<Output = RhdData> {
         CHANNEL.receive()
     }
 }
