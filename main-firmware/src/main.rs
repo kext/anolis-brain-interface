@@ -83,7 +83,7 @@ async fn rhd_task<'a>(rhd: &'a mut RHD2216<'_>, server: &'a Server, connection: 
             lv[(i * 4)..(i * 4 + 2)].copy_from_slice(&min.to_le_bytes());
             lv[(i * 4 + 2)..(i * 4 + 4)].copy_from_slice(&max.to_le_bytes());
         }
-        match server.service.liveview_notify(&connection, &lv) {
+        match server.service.liveview_notify(connection, &lv) {
             Err(gatt_server::NotifyValueError::Disconnected) => break,
             _ => {},
         }

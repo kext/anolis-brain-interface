@@ -111,8 +111,8 @@ impl SpiBuffers {
         &self.rx2 as *const _ as u32
     }
     fn fill_startup_commands(b: &mut [u16]) {
-        for i in 0..b.len() {
-            b[i] = match i {
+        for (i, v) in b.iter_mut().enumerate() {
+            *v = match i {
                 // Write all the registers
                 10 => write_register(0, 0b11011110),
                 11 => write_register(1, 8),
@@ -142,9 +142,9 @@ impl SpiBuffers {
         }
     }
     fn fill_readout_commands(b: &mut [u16]) {
-        for i in 0..b.len() {
+        for (i, v) in b.iter_mut().enumerate() {
             let n = i % STRIDE;
-            b[i] = if n < CHANNEL_COUNT {
+            *v = if n < CHANNEL_COUNT {
                 convert_channel(n as u8)
             } else {
                 dummy_command()
