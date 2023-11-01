@@ -3,26 +3,24 @@
 #![feature(type_alias_impl_trait)]
 #![feature(async_fn_in_trait)]
 
-#![macro_use]
-
 extern crate alloc;
 
-// global logger
-use defmt_rtt as _;
-// time driver
-use embassy_nrf as _;
-use panic_probe as _;
-
-use futures::pin_mut;
-use futures::future::join;
 use defmt::{info, unwrap};
 use embassy_executor::Spawner;
 use embassy_nrf::{interrupt, bind_interrupts};
 use embassy_nrf::gpio::{Level, Output, OutputDrive, AnyPin};
 use embassy_time::{Duration, Timer};
 use embedded_alloc::Heap;
+use futures::future::join;
 use nrf_softdevice::{raw, Softdevice};
 use nrf_softdevice::ble::{Connection, peripheral, gatt_server};
+use nrf_softdevice::ble::gatt_server::NotifyValueError;
+
+// global logger
+use defmt_rtt as _;
+// time driver
+use embassy_nrf as _;
+use panic_probe as _;
 
 mod rhd2216;
 use rhd2216::RHD2216;
@@ -56,10 +54,8 @@ async fn blink_task(pin1: AnyPin, pin2: AnyPin, pin3: AnyPin, off: bool) -> ! {
 
 #[nrf_softdevice::gatt_service(uuid = "edb74b42-8347-4285-a102-86f0b64c533c")]
 struct RhdService {
-    #[characteristic(uuid = "5c156371-fefe-4e75-aaa0-1f21188e2a33", read, write)]
-    running: bool,
     #[characteristic(uuid = "feb7f8e1-c457-4993-b0a0-92dd89a9547c", read, notify)]
-    liveview: [u8; rhd2216::CHANNEL_COUNT * 4],
+    liveview: [u8; rhd2216::CHANNEL_COUNT * 4 + 1],
 }
 
 #[nrf_softdevice::gatt_server]
@@ -69,9 +65,12 @@ struct Server {
 
 async fn rhd_task<'a>(rhd: &'a mut RHD2216<'_>, server: &'a Server, connection: &'a Connection) {
     rhd.start();
+    let mut counter = 0u8;
+    let mut lv = [0u8; rhd2216::CHANNEL_COUNT * 4 + 1];
     loop {
         let d = rhd.read().await;
-        let mut lv = [0u8; rhd2216::CHANNEL_COUNT * 4];
+        lv[0] = counter;
+        counter = counter.wrapping_add(1);
         for i in 0..d.channels {
             let mut min = u16::MAX;
             let mut max = u16::MIN;
@@ -80,12 +79,11 @@ async fn rhd_task<'a>(rhd: &'a mut RHD2216<'_>, server: &'a Server, connection: 
                 if v < min { min = v; }
                 if v > max { max = v; }
             }
-            lv[(i * 4)..(i * 4 + 2)].copy_from_slice(&min.to_le_bytes());
-            lv[(i * 4 + 2)..(i * 4 + 4)].copy_from_slice(&max.to_le_bytes());
+            lv[(i * 4 + 1)..(i * 4 + 3)].copy_from_slice(&min.to_le_bytes());
+            lv[(i * 4 + 3)..(i * 4 + 5)].copy_from_slice(&max.to_le_bytes());
         }
-        match server.service.liveview_notify(connection, &lv) {
-            Err(gatt_server::NotifyValueError::Disconnected) => break,
-            _ => {},
+        if let Err(NotifyValueError::Disconnected) = server.service.liveview_notify(connection, &lv) {
+            break;
         }
     }
     info!("Stopping");
@@ -176,7 +174,7 @@ async fn main(spawner: Spawner) {
     let mut rhd = RHD2216::new(
         Irqs,
         p.SPI3, p.TIMER1, p.TIMER2, p.PPI_CH0.into(), p.PPI_CH1.into(),
-        _rhd_cs, _rhd_clk, _rhd_mosi, _rhd_miso
+        _rhd_cs, _rhd_clk, _rhd_mosi, _rhd_miso,
     );
 
     #[rustfmt::skip]
@@ -201,17 +199,11 @@ async fn main(spawner: Spawner) {
         let rhd_future = rhd_task(&mut rhd, &server, &conn);
         let gatt_future = gatt_server::run(&conn, &server, |e| match e {
             ServerEvent::Service(e) => match e {
-                RhdServiceEvent::RunningWrite(_) => {
-                    info!("RunningWrite");
-                },
                 RhdServiceEvent::LiveviewCccdWrite { notifications } => {
                     info!("Notifications {}", notifications);
                 },
             }
         });
-
-        pin_mut!(rhd_future);
-        pin_mut!(gatt_future);
 
         join(rhd_future, gatt_future).await;
     }
