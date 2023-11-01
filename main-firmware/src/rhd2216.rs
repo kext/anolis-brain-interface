@@ -1,17 +1,17 @@
+use alloc::vec::Vec;
+use core::arch::asm;
+use core::cell::RefCell;
+use core::marker::PhantomData;
+use core::ptr::NonNull;
+use critical_section::Mutex;
 use defmt::warn;
 use embassy_nrf::{timer, peripherals, pac, Peripheral, PeripheralRef, into_ref, interrupt};
-use embassy_nrf::ppi::{Ppi, AnyConfigurableChannel, Event, Task};
 use embassy_nrf::gpio::{AnyPin, Port, Pin};
 use embassy_nrf::interrupt::typelevel::Interrupt;
-use embassy_sync::channel::Channel;
+use embassy_nrf::ppi::{Ppi, AnyConfigurableChannel, Event, Task};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::channel::Channel;
 use futures::Future;
-use core::ptr::NonNull;
-use core::marker::PhantomData;
-use core::cell::RefCell;
-use core::arch::asm;
-use alloc::vec::Vec;
-use critical_section::Mutex;
 
 pub struct RHD2216<'d> {
     // We need two timers.
@@ -343,7 +343,7 @@ impl<'d> RHD2216<'d> {
         cs: AnyPin,
         clk: AnyPin,
         mosi: AnyPin,
-        miso: AnyPin
+        miso: AnyPin,
     ) -> Self {
         into_ref!(spi);
         let timer1 = timer::Timer::new(timer1);
