@@ -1,0 +1,38 @@
+[package]
+name = "brain-interface"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = ["nightly"]
+nightly = [
+  "embassy-executor/nightly",
+  "embassy-nrf/nightly",
+  "embassy-nrf/unstable-traits",
+  "embassy-time/nightly",
+  "embassy-time/unstable-traits",
+  "static_cell/nightly",
+]
+
+[dependencies]
+# Embassy Packages
+embassy-futures = { version = "0.1.0" }
+embassy-executor = { version = "0.3.0", features = ["arch-cortex-m", "executor-thread", "executor-interrupt", "defmt", "integrated-timers"] }
+embassy-nrf = { version = "0.1.0", features = ["defmt", "nrf52840", "time-driver-rtc1", "gpiote", "unstable-pac", "time", "nfc-pins-as-gpio"] }
+embassy-time = { version = "0.1.2", features = ["defmt", "defmt-timestamp-uptime"] }
+embassy-sync = { version = "0.4.0" }
+
+# nRF Softdevice
+nrf-softdevice = { version = "0.1.0", features = ["nightly", "defmt", "nrf52840", "s140", "ble-peripheral", "ble-central", "ble-gatt-server", "critical-section-impl"] }
+nrf-softdevice-s140 = { version = "0.1.1" }
+
+# Other
+defmt = "0.3"
+defmt-rtt = "0.4"
+panic-probe = { version = "0.3", features = ["print-defmt"] }
+critical-section = "1.1.2"
+cortex-m = { version = "0.7.6", features = ["inline-asm"] }
+cortex-m-rt = "0.7.0"
+embedded-alloc = "0.5.0"
+static_cell = "1.1"
+futures = { version = "0.3.5", default-features = false }

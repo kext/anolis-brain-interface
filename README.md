@@ -9,7 +9,7 @@ See the [Readme there](pcb/README.md) for instructions to setup your work enviro
 
 ## Firmware
 
-The firmware for the brain interface is in the `main-firmware` directory.
+The firmware for the brain interfacecand the dongle is in the `firmware` directory.
 
 To compile and flash it you will need the Rust compiler.
 You can install it using the instructions on [the rustup website](https://rustup.rs/).
@@ -22,10 +22,16 @@ For debug we are using the `probe-run` tool.
 Install it with `cargo install probe-run`.
 
 After all tools are installed the firmware can be compiled by executing `cargo build --release` in the firmware directory.
+This will build both the brain interface and the dongle firmware.
 The firmware must be built in release mode or it will have performance issues.
 
 You can also run the firmware with an attached debugger.
-To do this use `DEFMT_LOG=trace cargo run --release`.
+To do this use `DEFMT_LOG=trace cargo run --release -p brain-interface`.
 The `DEFMT_LOG` environment variable selects the log level that the firmware prints to the debug terminal.
 It defaults to `error`, so to see all messages we use the value `trace` instead.
 All possible levels in increasing order are `trace`, `debug`, `info`, `warn` and `error`.
+
+The `-p` flag selects the firmware to debug, build or flash.
+For the dongle firmware use `-p dongle` instead of `-p brain-interface`.
+
+To flash the firmware for production, use the following command: `cargo flash --release --chip nRF52840_xxAA -p brain-interface`.

@@ -1,7 +1,6 @@
 #![no_std]
 #![no_main]
 #![feature(type_alias_impl_trait)]
-#![feature(async_fn_in_trait)]
 
 extern crate alloc;
 
@@ -179,13 +178,16 @@ async fn main(spawner: Spawner) {
 
     #[rustfmt::skip]
     let adv_data = &[
-        0x02, 0x01, raw::BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE as u8,
-        0x03, 0x03, 0x09, 0x18,
-        0x0a, 0x09, b'I', b'n', b't', b'e', b'r', b'f', b'a', b'c', b'e',
+        // Flags
+        2, 1, raw::BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE as u8,
+        // Complete List of 128-bit Service Class UUIDs
+        // edb74b42-8347-4285-a102-86f0b64c533c
+        17, 7, 0x3c, 0x53, 0x4c, 0xb6, 0xf0, 0x86, 0x02, 0xa1, 0x85, 0x42, 0x47, 0x83, 0x42, 0x4b, 0xb7, 0xed,
     ];
     #[rustfmt::skip]
     let scan_data = &[
-        0x03, 0x03, 0x09, 0x18,
+        // Complete List of 128-bit Service Class UUIDs
+        17, 7, 0x3c, 0x53, 0x4c, 0xb6, 0xf0, 0x86, 0x02, 0xa1, 0x85, 0x42, 0x47, 0x83, 0x42, 0x4b, 0xb7, 0xed,
     ];
 
     loop {
