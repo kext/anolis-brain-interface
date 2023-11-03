@@ -9,6 +9,8 @@
     "Intan",
     "Setebos",
     "Würth",
-    "YFFR"
+    "YFFR",
+    "defmt",
+    "Softdevice"
   ]
 }
