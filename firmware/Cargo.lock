@@ -91,7 +91,6 @@ dependencies = [
  "nrf-softdevice",
  "nrf-softdevice-s140",
  "panic-probe",
- "static_cell",
 ]
 
 [[package]]
@@ -283,7 +282,6 @@ dependencies = [
  "embassy-sync 0.4.0",
  "embassy-time",
  "embassy-usb",
- "embedded-alloc",
  "futures",
  "nrf-softdevice",
  "nrf-softdevice-s140",
