@@ -2,6 +2,7 @@
 #![no_main]
 #![feature(type_alias_impl_trait)]
 
+use ble_service::AdvertisementData;
 use defmt::{info, warn, unwrap};
 use embassy_executor::Spawner;
 use embassy_nrf::gpio::{Output, OutputDrive, Level};
@@ -81,9 +82,9 @@ async fn main(spawner: Spawner) {
 
     loop {
         let mut config = ScanConfig::default();
-        let addr = central::scan(sd, &config, |param| {
-            if AdvDataIterator::new(get_advertisement_data(param)).find(|d| *d == uuid).is_some() {
-                Some(param.peer_addr.addr)
+        let addr = central::scan(sd, &config, |adv_report| {
+            if AdvertisementData::new(adv_report).into_iter().find(|d| *d == uuid).is_some() {
+                Some(adv_report.peer_addr.addr)
             } else {
                 None
             }
@@ -111,50 +112,5 @@ async fn main(spawner: Spawner) {
             },
             Err(_) => warn!("Connection failed"),
         }
-    }
-}
-
-/// Iterator over advertisement data.
-/// Advertisement data is a list of bytes
-struct AdvDataIterator<'a> {
-    data: &'a [u8],
-    pos: usize,
-}
-
-impl<'a> AdvDataIterator<'a> {
-    fn new(data: &'a [u8]) -> Self {
-        Self {
-            data,
-            pos: 0,
-        }
-    }
-}
-
-impl<'a> Iterator for AdvDataIterator<'a> {
-    type Item = &'a [u8];
-    fn next(&mut self) -> Option<&'a [u8]> {
-        if self.pos >= self.data.len() {
-            return None;
-        }
-        let len = self.data[self.pos] as usize;
-        if self.pos + len + 1 <= self.data.len() {
-            let r = Some(&self.data[self.pos + 1 .. self.pos + len + 1]);
-            self.pos += len + 1;
-            r
-        } else {
-            None
-        }
-    }
-}
-
-/// Extract the advertisement data from a raw advertisement report.
-fn get_advertisement_data(param: &raw::ble_gap_evt_adv_report_t) -> &[u8] {
-    if param.data.len > 0 {
-        // SAFETY: The advertisement data lives as long as the report.
-        unsafe {
-            core::slice::from_raw_parts(param.data.p_data, param.data.len as usize)
-        }
-    } else {
-        &[]
     }
 }

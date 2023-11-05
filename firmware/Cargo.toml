@@ -1,5 +1,5 @@
 [workspace]
-members = ["brain-interface", "dongle"]
+members = ["brain-interface", "dongle", "ble-service"]
 resolver = "2"
 
 [patch.crates-io]
