@@ -2,11 +2,14 @@
 #![no_main]
 #![feature(type_alias_impl_trait)]
 
+use data_channel::{L2capError, BoxPacket};
 use defmt::{info, warn, unwrap};
 use embassy_executor::Spawner;
 use embassy_nrf::gpio::{Output, OutputDrive, Level};
 use embassy_nrf::interrupt;
-use nrf_softdevice::ble::{Address, AddressType, PhySet, gatt_client, Connection};
+use embedded_alloc::Heap;
+use nrf_softdevice::ble::l2cap::L2cap;
+use nrf_softdevice::ble::{Address, AddressType, PhySet, Connection};
 use nrf_softdevice::ble::central::{ScanConfig, self, ConnectConfig};
 use nrf_softdevice::{raw, Softdevice};
 
@@ -16,31 +19,30 @@ use defmt_rtt as _;
 use embassy_nrf as _;
 use panic_probe as _;
 
+#[global_allocator]
+static HEAP: Heap = Heap::empty();
+
 mod adv_data;
-mod gatt_client_error;
-use gatt_client_error::GattClientError;
 
 #[embassy_executor::task]
 async fn softdevice_task(sd: &'static Softdevice) -> ! {
     sd.run().await
 }
 
-#[nrf_softdevice::gatt_client(uuid = "edb74b42-8347-4285-a102-86f0b64c533c")]
-struct DataServiceClient {
-    #[characteristic(uuid = "feb7f8e1-c457-4993-b0a0-92dd89a9547c", read, write, notify)]
-    data: [u8; 242],
-}
+type MyPacket = BoxPacket<512>;
 
-async fn handle_connection(connection: &Connection) -> Result<(), GattClientError> {
-    let client: DataServiceClient = gatt_client::discover(&connection).await?;
-    client.data_cccd_write(true).await?;
-    let mut counter = 0u8;
+async fn handle_connection(l2cap: &L2cap<MyPacket>, connection: &Connection) -> Result<(), L2capError<MyPacket>> {
+    let config = nrf_softdevice::ble::l2cap::Config { credits: 8 };
+    let channel = l2cap.setup(connection, &config, data_channel::PSM).await?;
+    let mut _counter = 0u8;
     loop {
-        let _data = client.data_read().await?;
-        if _data[0] != counter {
+        let packet = channel.rx().await?;
+        let data = packet.as_bytes();
+        /*if data[0] != counter {
             info!("Dropped packet");
         }
-        counter = _data[0].wrapping_add(1);
+        counter = data[0].wrapping_add(1);*/
+        info!("{:?}", data);
     }
 }
 
@@ -48,7 +50,15 @@ async fn handle_connection(connection: &Connection) -> Result<(), GattClientErro
 async fn main(spawner: Spawner) {
     info!("Start");
 
-    // First we get the peripherals access crate.
+    // Initialise allocator.
+    {
+        use core::mem::MaybeUninit;
+        const HEAP_SIZE: usize = 1024 * 64;
+        static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
+        unsafe { HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE) }
+    }
+
+    // Get the peripherals access crate.
     let mut config = embassy_nrf::config::Config::default();
     config.gpiote_interrupt_priority = interrupt::Priority::P3;
     config.time_interrupt_priority = interrupt::Priority::P3;
@@ -66,18 +76,19 @@ async fn main(spawner: Spawner) {
             event_length: 40,
         }),
         conn_gatt: Some(raw::ble_gatt_conn_cfg_t {
-            att_mtu: 247,
+            att_mtu: 114
+        }),
+        conn_gattc: Some(raw::ble_gattc_conn_cfg_t {
+            write_cmd_tx_queue_size: 0,
         }),
         conn_gatts: Some(raw::ble_gatts_conn_cfg_t {
-            hvn_tx_queue_size: 10,
+            hvn_tx_queue_size: 0
         }),
-        gatts_attr_tab_size: Some(raw::ble_gatts_cfg_attr_tab_size_t {
-            attr_tab_size: raw::BLE_GATTS_ATTR_TAB_SIZE_DEFAULT,
-        }),
+        gatts_attr_tab_size: Some(raw::ble_gatts_cfg_attr_tab_size_t { attr_tab_size: 1024 }),
         gap_role_count: Some(raw::ble_gap_cfg_role_count_t {
             adv_set_count: 1,
-            periph_role_count: 1,
-            central_role_count: 1,
+            periph_role_count: 5,
+            central_role_count: 15,
             central_sec_count: 0,
             _bitfield_1: raw::ble_gap_cfg_role_count_t::new_bitfield_1(0),
         }),
@@ -90,10 +101,18 @@ async fn main(spawner: Spawner) {
             },
             _bitfield_1: raw::ble_gap_cfg_device_name_t::new_bitfield_1(raw::BLE_GATTS_VLOC_STACK as u8),
         }),
+        conn_l2cap: Some(raw::ble_l2cap_conn_cfg_t {
+            ch_count: 1,
+            rx_mps: 256,
+            tx_mps: 256,
+            rx_queue_size: 10,
+            tx_queue_size: 10,
+        }),
         ..Default::default()
     };
 
     let sd = Softdevice::enable(&config);
+    let l2cap = L2cap::init(&sd);
 
     unwrap!(spawner.spawn(softdevice_task(sd)));
 
@@ -124,12 +143,10 @@ async fn main(spawner: Spawner) {
                 max_conn_interval: 8,
                 slave_latency: 5,
             },
-            att_mtu: Some(247),
         }).await {
             Ok(connection) => {
                 info!("Connected");
-                info!("MTU: {}", connection.att_mtu());
-                if handle_connection(&connection).await.is_err() {
+                if handle_connection(&l2cap, &connection).await.is_err() {
                     warn!("Error in handle_connection");
                 }
                 let _ = connection.disconnect();

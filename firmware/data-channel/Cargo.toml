@@ -1,0 +1,8 @@
+[package]
+name = "data-channel"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+nrf-softdevice = { version = "0.1.0", features = ["nightly", "defmt", "nrf52840", "s140", "ble-central", "ble-l2cap", "evt-max-size-512", "critical-section-impl"] }
+nrf-softdevice-s140 = { version = "0.1.1" }

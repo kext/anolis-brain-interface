@@ -4,16 +4,16 @@
 
 extern crate alloc;
 
+use data_channel::{BoxPacket, L2capError};
 use defmt::{info, unwrap};
 use embassy_executor::Spawner;
 use embassy_nrf::{interrupt, bind_interrupts};
 use embassy_nrf::gpio::{Level, Output, OutputDrive, AnyPin};
 use embassy_time::{Duration, Timer};
 use embedded_alloc::Heap;
-use futures::future::join;
+use nrf_softdevice::ble::l2cap::{L2cap, Packet};
 use nrf_softdevice::{raw, Softdevice};
-use nrf_softdevice::ble::{Connection, peripheral, gatt_server};
-use nrf_softdevice::ble::gatt_server::NotifyValueError;
+use nrf_softdevice::ble::{Connection, peripheral};
 use nrf_softdevice::ble::peripheral::ConnectableAdvertisement;
 
 // global logger
@@ -64,53 +64,39 @@ const ADVERTISEMENT_DATA: &'static [u8] = &[
 pub fn advertisement() -> ConnectableAdvertisement<'static> {
     ConnectableAdvertisement::ScannableUndirected {
         adv_data: ADVERTISEMENT_DATA,
-        scan_data: &ADVERTISEMENT_DATA[3..21],
+        scan_data: &[],
     }
 }
 
-#[nrf_softdevice::gatt_service(uuid = "edb74b42-8347-4285-a102-86f0b64c533c")]
-pub struct DataService {
-    #[characteristic(uuid = "feb7f8e1-c457-4993-b0a0-92dd89a9547c", read, write, notify)]
-    data: [u8; 242],
-}
+type MyPacket = BoxPacket<512>;
 
-#[nrf_softdevice::gatt_server]
-pub struct DataServer {
-    service: DataService,
-}
-
-async fn rhd_task<'a>(rhd: &'a mut RHD2216<'_>, server: &'a DataServer, connection: &'a Connection) {
+async fn send_rhd_data(rhd: &mut RHD2216<'_>, l2cap: &L2cap<MyPacket>, connection: &Connection) -> Result<(), L2capError<MyPacket>> {
+    let config = nrf_softdevice::ble::l2cap::Config { credits: 8 };
+    let channel = l2cap.listen(connection, &config, data_channel::PSM).await?;
     rhd.start();
     let mut counter = 0u8;
-    let mut len;
-    let mut packet = [0u8; 242];
     loop {
         let d = rhd.read().await;
-        packet[0] = counter;
-        len = 2;
+        let mut packet = MyPacket::new();
+        packet.append(&[counter]);
+        counter = counter.wrapping_add(1);
         for v in d.frames {
-            packet[len..len+2].copy_from_slice(&v.to_le_bytes());
-            len += 2;
-            if len == packet.len() {
-                packet[1] = (len - 2) as u8;
-                if let Err(NotifyValueError::Disconnected) = server.service.data_notify(connection, &packet) {
-                    break;
+            if packet.len() > MyPacket::MTU - 2 {
+                if let Err(e) = channel.tx(packet).await {
+                    rhd.stop();
+                    return Err(e.into())
                 }
+                packet = MyPacket::new();
+                packet.append(&[counter]);
                 counter = counter.wrapping_add(1);
-                packet[0] = counter;
-                len = 2;
             }
+            packet.append(&v.to_le_bytes());
         }
-        if len > 2 {
-            packet[1] = (len - 2) as u8;
-            if let Err(NotifyValueError::Disconnected) = server.service.data_notify(connection, &packet) {
-                break;
-            }
-            counter = counter.wrapping_add(1);
+        if let Err(e) = channel.tx(packet).await {
+            rhd.stop();
+            return Err(e.into())
         }
     }
-    info!("Stopping");
-    rhd.stop();
 }
 
 #[embassy_executor::main]
@@ -143,18 +129,19 @@ async fn main(spawner: Spawner) {
             event_length: 40,
         }),
         conn_gatt: Some(raw::ble_gatt_conn_cfg_t {
-            att_mtu: 247,
+            att_mtu: 114
+        }),
+        conn_gattc: Some(raw::ble_gattc_conn_cfg_t {
+            write_cmd_tx_queue_size: 0,
         }),
         conn_gatts: Some(raw::ble_gatts_conn_cfg_t {
-            hvn_tx_queue_size: 10,
+            hvn_tx_queue_size: 0
         }),
-        gatts_attr_tab_size: Some(raw::ble_gatts_cfg_attr_tab_size_t {
-            attr_tab_size: raw::BLE_GATTS_ATTR_TAB_SIZE_DEFAULT,
-        }),
+        gatts_attr_tab_size: Some(raw::ble_gatts_cfg_attr_tab_size_t { attr_tab_size: 1024 }),
         gap_role_count: Some(raw::ble_gap_cfg_role_count_t {
             adv_set_count: 1,
-            periph_role_count: 1,
-            central_role_count: 0,
+            periph_role_count: 5,
+            central_role_count: 15,
             central_sec_count: 0,
             _bitfield_1: raw::ble_gap_cfg_role_count_t::new_bitfield_1(0),
         }),
@@ -166,6 +153,13 @@ async fn main(spawner: Spawner) {
                 _bitfield_1: raw::ble_gap_conn_sec_mode_t::new_bitfield_1(1, 1),
             },
             _bitfield_1: raw::ble_gap_cfg_device_name_t::new_bitfield_1(raw::BLE_GATTS_VLOC_STACK as u8),
+        }),
+        conn_l2cap: Some(raw::ble_l2cap_conn_cfg_t {
+            ch_count: 1,
+            rx_mps: 256,
+            tx_mps: 256,
+            rx_queue_size: 10,
+            tx_queue_size: 10,
         }),
         ..Default::default()
     };
@@ -189,7 +183,7 @@ async fn main(spawner: Spawner) {
     let _rhd_miso: AnyPin = _b4;
 
     let sd = Softdevice::enable(&config);
-    let server = unwrap!(DataServer::new(sd));
+    let l2cap = L2cap::init(&sd);
 
     unwrap!(spawner.spawn(softdevice_task(sd)));
     unwrap!(spawner.spawn(blink_task(_led1, _led2, _led3, false)));
@@ -204,21 +198,11 @@ async fn main(spawner: Spawner) {
         info!("Waiting for connection");
         let config = peripheral::Config::default();
 
-        let conn = unwrap!(peripheral::advertise_connectable(sd, advertisement(), &config).await);
+        let connection = unwrap!(peripheral::advertise_connectable(sd, advertisement(), &config).await);
         info!("advertising done! I have a connection.");
 
-        let rhd_future = rhd_task(&mut rhd, &server, &conn);
-        let gatt_future = gatt_server::run(&conn, &server, |e| match e {
-            DataServerEvent::Service(e) => match e {
-                DataServiceEvent::DataCccdWrite { notifications } => {
-                    info!("Notifications {}", notifications);
-                },
-                DataServiceEvent::DataWrite(data) => {
-                    info!("Data {:?}", data);
-                }
-            }
-        });
-
-        join(rhd_future, gatt_future).await;
+        if let Err(_) = send_rhd_data(&mut rhd, &l2cap, &connection).await {
+            info!("Stopped");
+        }
     }
 }
