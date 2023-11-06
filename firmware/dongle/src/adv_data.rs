@@ -1,8 +1,14 @@
 use nrf_softdevice::raw;
 
+const SERVICE_LIST: &'static [u8] = &[7, 0x3c, 0x53, 0x4c, 0xb6, 0xf0, 0x86, 0x02, 0xa1, 0x85, 0x42, 0x47, 0x83, 0x42, 0x4b, 0xb7, 0xed];
+
+pub fn supports_data_service(adv_report: &raw::ble_gap_evt_adv_report_t) -> bool {
+    AdvertisementData::new(adv_report).into_iter().find(|d| *d == SERVICE_LIST).is_some()
+}
+
 /// Iterator over advertisement data.
 /// Advertisement data is a list of bytes
-pub struct AdvertisementDataIterator<'a> {
+struct AdvertisementDataIterator<'a> {
     data: &'a [u8],
     pos: usize,
 }
@@ -40,12 +46,12 @@ fn get_advertisement_data(adv_report: &raw::ble_gap_evt_adv_report_t) -> &[u8] {
     }
 }
 
-pub struct AdvertisementData<'a> {
+struct AdvertisementData<'a> {
     data: &'a [u8],
 }
 
 impl<'a> AdvertisementData<'a> {
-    pub fn new(adv_report: &'a raw::ble_gap_evt_adv_report_t) -> Self {
+    fn new(adv_report: &'a raw::ble_gap_evt_adv_report_t) -> Self {
         Self {
             data: get_advertisement_data(adv_report),
         }

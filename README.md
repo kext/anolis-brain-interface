@@ -9,7 +9,7 @@ See the [Readme there](pcb/README.md) for instructions to setup your work enviro
 
 ## Firmware
 
-The firmware for the brain interfacecand the dongle is in the `firmware` directory.
+The firmware for the brain interface and the dongle is in the `firmware` directory.
 
 To compile and flash it you will need the Rust compiler.
 You can install it using the instructions on [the rustup website](https://rustup.rs/).

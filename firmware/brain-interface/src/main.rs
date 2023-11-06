@@ -14,6 +14,7 @@ use futures::future::join;
 use nrf_softdevice::{raw, Softdevice};
 use nrf_softdevice::ble::{Connection, peripheral, gatt_server};
 use nrf_softdevice::ble::gatt_server::NotifyValueError;
+use nrf_softdevice::ble::peripheral::ConnectableAdvertisement;
 
 // global logger
 use defmt_rtt as _;
@@ -51,38 +52,61 @@ async fn blink_task(pin1: AnyPin, pin2: AnyPin, pin3: AnyPin, off: bool) -> ! {
     }
 }
 
+#[rustfmt::skip]
+const ADVERTISEMENT_DATA: &'static [u8] = &[
+    // Flags
+    2, 1, raw::BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE as u8,
+    // Complete List of 128-bit Service Class UUIDs
+    // edb74b42-8347-4285-a102-86f0b64c533c
+    17, 7, 0x3c, 0x53, 0x4c, 0xb6, 0xf0, 0x86, 0x02, 0xa1, 0x85, 0x42, 0x47, 0x83, 0x42, 0x4b, 0xb7, 0xed,
+];
+
+pub fn advertisement() -> ConnectableAdvertisement<'static> {
+    ConnectableAdvertisement::ScannableUndirected {
+        adv_data: ADVERTISEMENT_DATA,
+        scan_data: &ADVERTISEMENT_DATA[3..21],
+    }
+}
+
 #[nrf_softdevice::gatt_service(uuid = "edb74b42-8347-4285-a102-86f0b64c533c")]
-struct RhdService {
-    #[characteristic(uuid = "feb7f8e1-c457-4993-b0a0-92dd89a9547c", read, notify)]
-    liveview: [u8; rhd2216::CHANNEL_COUNT * 4 + 1],
+pub struct DataService {
+    #[characteristic(uuid = "feb7f8e1-c457-4993-b0a0-92dd89a9547c", read, write, notify)]
+    data: [u8; 242],
 }
 
 #[nrf_softdevice::gatt_server]
-struct Server {
-    service: RhdService,
+pub struct DataServer {
+    service: DataService,
 }
 
-async fn rhd_task<'a>(rhd: &'a mut RHD2216<'_>, server: &'a Server, connection: &'a Connection) {
+async fn rhd_task<'a>(rhd: &'a mut RHD2216<'_>, server: &'a DataServer, connection: &'a Connection) {
     rhd.start();
     let mut counter = 0u8;
-    let mut lv = [0u8; rhd2216::CHANNEL_COUNT * 4 + 1];
+    let mut len;
+    let mut packet = [0u8; 242];
     loop {
         let d = rhd.read().await;
-        lv[0] = counter;
-        counter = counter.wrapping_add(1);
-        for i in 0..d.channels {
-            let mut min = u16::MAX;
-            let mut max = u16::MIN;
-            for j in (i..d.frames.len()).step_by(d.channels) {
-                let v = d.frames[j];
-                if v < min { min = v; }
-                if v > max { max = v; }
+        packet[0] = counter;
+        len = 2;
+        for v in d.frames {
+            packet[len..len+2].copy_from_slice(&v.to_le_bytes());
+            len += 2;
+            if len == packet.len() {
+                packet[1] = (len - 2) as u8;
+                if let Err(NotifyValueError::Disconnected) = server.service.data_notify(connection, &packet) {
+                    break;
+                }
+                counter = counter.wrapping_add(1);
+                packet[0] = counter;
+                len = 2;
             }
-            lv[(i * 4 + 1)..(i * 4 + 3)].copy_from_slice(&min.to_le_bytes());
-            lv[(i * 4 + 3)..(i * 4 + 5)].copy_from_slice(&max.to_le_bytes());
         }
-        if let Err(NotifyValueError::Disconnected) = server.service.liveview_notify(connection, &lv) {
-            break;
+        if len > 2 {
+            packet[1] = (len - 2) as u8;
+            if let Err(NotifyValueError::Disconnected) = server.service.data_notify(connection, &packet) {
+                break;
+            }
+            counter = counter.wrapping_add(1);
         }
     }
     info!("Stopping");
@@ -165,7 +189,7 @@ async fn main(spawner: Spawner) {
     let _rhd_miso: AnyPin = _b4;
 
     let sd = Softdevice::enable(&config);
-    let server = unwrap!(Server::new(sd));
+    let server = unwrap!(DataServer::new(sd));
 
     unwrap!(spawner.spawn(softdevice_task(sd)));
     unwrap!(spawner.spawn(blink_task(_led1, _led2, _led3, false)));
@@ -176,34 +200,22 @@ async fn main(spawner: Spawner) {
         _rhd_cs, _rhd_clk, _rhd_mosi, _rhd_miso,
     );
 
-    #[rustfmt::skip]
-    let adv_data = &[
-        // Flags
-        2, 1, raw::BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE as u8,
-        // Complete List of 128-bit Service Class UUIDs
-        // edb74b42-8347-4285-a102-86f0b64c533c
-        17, 7, 0x3c, 0x53, 0x4c, 0xb6, 0xf0, 0x86, 0x02, 0xa1, 0x85, 0x42, 0x47, 0x83, 0x42, 0x4b, 0xb7, 0xed,
-    ];
-    #[rustfmt::skip]
-    let scan_data = &[
-        // Complete List of 128-bit Service Class UUIDs
-        17, 7, 0x3c, 0x53, 0x4c, 0xb6, 0xf0, 0x86, 0x02, 0xa1, 0x85, 0x42, 0x47, 0x83, 0x42, 0x4b, 0xb7, 0xed,
-    ];
-
     loop {
         info!("Waiting for connection");
         let config = peripheral::Config::default();
 
-        let adv = peripheral::ConnectableAdvertisement::ScannableUndirected { adv_data, scan_data };
-        let conn = unwrap!(peripheral::advertise_connectable(sd, adv, &config).await);
+        let conn = unwrap!(peripheral::advertise_connectable(sd, advertisement(), &config).await);
         info!("advertising done! I have a connection.");
 
         let rhd_future = rhd_task(&mut rhd, &server, &conn);
         let gatt_future = gatt_server::run(&conn, &server, |e| match e {
-            ServerEvent::Service(e) => match e {
-                RhdServiceEvent::LiveviewCccdWrite { notifications } => {
+            DataServerEvent::Service(e) => match e {
+                DataServiceEvent::DataCccdWrite { notifications } => {
                     info!("Notifications {}", notifications);
                 },
+                DataServiceEvent::DataWrite(data) => {
+                    info!("Data {:?}", data);
+                }
             }
         });
 

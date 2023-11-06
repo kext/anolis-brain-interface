@@ -2,12 +2,11 @@
 #![no_main]
 #![feature(type_alias_impl_trait)]
 
-use ble_service::AdvertisementData;
 use defmt::{info, warn, unwrap};
 use embassy_executor::Spawner;
 use embassy_nrf::gpio::{Output, OutputDrive, Level};
 use embassy_nrf::interrupt;
-use nrf_softdevice::ble::{Address, AddressType, PhySet};
+use nrf_softdevice::ble::{Address, AddressType, PhySet, gatt_client, Connection};
 use nrf_softdevice::ble::central::{ScanConfig, self, ConnectConfig};
 use nrf_softdevice::{raw, Softdevice};
 
@@ -17,9 +16,32 @@ use defmt_rtt as _;
 use embassy_nrf as _;
 use panic_probe as _;
 
+mod adv_data;
+mod gatt_client_error;
+use gatt_client_error::GattClientError;
+
 #[embassy_executor::task]
 async fn softdevice_task(sd: &'static Softdevice) -> ! {
     sd.run().await
+}
+
+#[nrf_softdevice::gatt_client(uuid = "edb74b42-8347-4285-a102-86f0b64c533c")]
+struct DataServiceClient {
+    #[characteristic(uuid = "feb7f8e1-c457-4993-b0a0-92dd89a9547c", read, write, notify)]
+    data: [u8; 242],
+}
+
+async fn handle_connection(connection: &Connection) -> Result<(), GattClientError> {
+    let client: DataServiceClient = gatt_client::discover(&connection).await?;
+    client.data_cccd_write(true).await?;
+    let mut counter = 0u8;
+    loop {
+        let _data = client.data_read().await?;
+        if _data[0] != counter {
+            info!("Dropped packet");
+        }
+        counter = _data[0].wrapping_add(1);
+    }
 }
 
 #[embassy_executor::main]
@@ -78,12 +100,10 @@ async fn main(spawner: Spawner) {
     let mut led = Output::new(p.P0_24, Level::Low, OutputDrive::Standard);
     led.set_high();
 
-    let uuid = &[7, 0x3c, 0x53, 0x4c, 0xb6, 0xf0, 0x86, 0x02, 0xa1, 0x85, 0x42, 0x47, 0x83, 0x42, 0x4b, 0xb7, 0xed];
-
     loop {
         let mut config = ScanConfig::default();
         let addr = central::scan(sd, &config, |adv_report| {
-            if AdvertisementData::new(adv_report).into_iter().find(|d| *d == uuid).is_some() {
+            if adv_data::supports_data_service(adv_report) {
                 Some(adv_report.peer_addr.addr)
             } else {
                 None
@@ -104,11 +124,15 @@ async fn main(spawner: Spawner) {
                 max_conn_interval: 8,
                 slave_latency: 5,
             },
+            att_mtu: Some(247),
         }).await {
             Ok(connection) => {
                 info!("Connected");
-                info!("{}", connection.att_mtu());
-                connection.disconnect().unwrap();
+                info!("MTU: {}", connection.att_mtu());
+                if handle_connection(&connection).await.is_err() {
+                    warn!("Error in handle_connection");
+                }
+                let _ = connection.disconnect();
             },
             Err(_) => warn!("Connection failed"),
         }
