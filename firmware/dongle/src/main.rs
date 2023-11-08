@@ -276,8 +276,11 @@ async fn main(spawner: Spawner) {
         )
         .await
         {
-            Ok(connection) => {
+            Ok(mut connection) => {
                 info!("Connected");
+                if let Err(_) = connection.phy_update(PhySet::M2, PhySet::M2) {
+                    warn!("Could not upgrade to 2M PHY");
+                }
                 info!("MTU {}", connection.att_mtu());
                 if handle_connection(&l2cap, &connection, &mut usb_sender)
                     .await
