@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en" class="light">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>WebUSB</title>
+<link rel="stylesheet" href="style.css"/>
+<script defer src="vue.global.js"></script>
+<script defer src="plot.js"></script>
+<script defer src="icons.js"></script>
+<script defer src="script.js"></script>
+</head>
+<body>
+  <div class="grid" columns="1">
+    <div v-if="device === null">
+      <button @click="connect()"><icon-zap-16></icon-zap-16> Connect</button>
+    </div>
+    <div v-if="start > 0">
+      {{transferred}} ({{speed}})
+    </div>
+    <div class="grid" columns="2" columns-s="1">
+      <div v-for="p in plots">
+        <plot-2d :label="p.value.name" :data="p.value.data" :color="p.value.color"></plot-2d>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

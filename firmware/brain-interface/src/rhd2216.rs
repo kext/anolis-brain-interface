@@ -1,17 +1,34 @@
 use alloc::vec::Vec;
-use core::arch::asm;
-use core::cell::RefCell;
-use core::marker::PhantomData;
-use core::ptr::NonNull;
+use core::{arch::asm, cell::RefCell, marker::PhantomData, ptr::NonNull};
 use critical_section::Mutex;
-use defmt::warn;
-use embassy_nrf::{timer, peripherals, pac, Peripheral, PeripheralRef, into_ref, interrupt};
-use embassy_nrf::gpio::{AnyPin, Port, Pin};
-use embassy_nrf::interrupt::typelevel::Interrupt;
-use embassy_nrf::ppi::{Ppi, AnyConfigurableChannel, Event, Task};
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::channel::Channel;
+use defmt::{info, warn};
+use embassy_nrf::{
+    gpio::{AnyPin, Pin, Port},
+    interrupt::{self, typelevel::Interrupt},
+    into_ref, pac, peripherals,
+    ppi::{AnyConfigurableChannel, Event, Ppi, Task},
+    timer, Peripheral, PeripheralRef,
+};
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel};
 use futures::Future;
+
+// Configuration
+// Number of channels.
+pub const CHANNEL_COUNT: usize = 8;
+// How many samples to read from each channel between interrupts.
+pub const FRAMES_PER_BUFFER: usize = 100;
+// How many commands to send for each frame. Must be at least CHANNEL_COUNT + 2.
+const STRIDE: usize = 10;
+// Number of 16MHz ticks between two commands
+const TIMER_INTERVAL: usize = 320;
+// Size of one full buffer between interrupts.
+const BUFFER_SIZE: usize = FRAMES_PER_BUFFER * STRIDE;
+// How much overflow space to leave after ever buffer.
+const OVERFLOW: usize = BUFFER_SIZE;
+// Total buffer space.
+const TOTAL_BUFFER: usize = BUFFER_SIZE + OVERFLOW;
+// By how many bytes to adjust the DMA pointer. Must be the byte size of one buffer.
+const OFFSET: u32 = BUFFER_SIZE as u32 * 2;
 
 pub struct RHD2216<'d> {
     // We need two timers.
@@ -53,37 +70,29 @@ fn timer2_registers() -> &'static pac::timer2::RegisterBlock {
 
 // Functions to generate commands as u16.
 // Most of these intentionally use LE byte order with swapped bytes.
-const fn convert_channel(c: u8) -> u16 { (c as u16).to_le() }
-const fn read_register(r: u8) -> u16 { (r as u16 | 192).to_le() }
-const fn write_register(r: u8, d: u8) -> u16 { (((d as u16) << 8) | (r as u16) | 128).to_le() }
-const fn start_calibration() -> u16 { 0b01010101u16 }
-const fn dummy_command() -> u16 { read_register(40) }
+const fn convert_channel(c: u8) -> u16 {
+    (c as u16).to_le()
+}
+const fn read_register(r: u8) -> u16 {
+    (r as u16 | 192).to_le()
+}
+const fn write_register(r: u8, d: u8) -> u16 {
+    (((d as u16) << 8) | (r as u16) | 128).to_le()
+}
+const fn start_calibration() -> u16 {
+    0b01010101u16
+}
+const fn dummy_command() -> u16 {
+    read_register(40)
+}
 
 #[derive(PartialEq)]
 enum State {
-    Off, // The ADC is stopped.
+    Off,      // The ADC is stopped.
     Starting, // The ADC is executing the calibration sequence.
-    Rx1, // Receiving into buffer rx1.
-    Rx2, // Receiving into buffer rx2.
+    Rx1,      // Receiving into buffer rx1.
+    Rx2,      // Receiving into buffer rx2.
 }
-
-// Configuration
-// Number of channels.
-pub const CHANNEL_COUNT: usize = 8;
-// How many samples to read from each channel between interrupts.
-const FRAMES_PER_BUFFER: usize = 100;
-// How many commands to send for each frame. Must be at least CHANNEL_COUNT + 2.
-const STRIDE: usize = 10;
-// Number of 16MHz ticks between two commands
-const TIMER_INTERVAL: usize = 320;
-// Size of one full buffer between interrupts.
-const BUFFER_SIZE: usize = FRAMES_PER_BUFFER * STRIDE;
-// How much overflow space to leave after ever buffer.
-const OVERFLOW: usize = BUFFER_SIZE;
-// Total buffer space.
-const TOTAL_BUFFER: usize = BUFFER_SIZE + OVERFLOW;
-// By how many bytes to adjust the DMA pointer. Must be the byte size of one buffer.
-const OFFSET: u32 = BUFFER_SIZE as u32 * 2;
 
 struct SpiBuffers {
     tx: [u16; TOTAL_BUFFER],
@@ -98,7 +107,7 @@ static SPI_BUFFERS: Mutex<RefCell<SpiBuffers>> = Mutex::new(RefCell::new(SpiBuff
     rx2: [0u16; TOTAL_BUFFER],
     state: State::Off,
 }));
-static CHANNEL: Channel<CriticalSectionRawMutex, RhdData, 10> = Channel::new();
+static CHANNEL: Channel<CriticalSectionRawMutex, RhdData, 16> = Channel::new();
 
 impl SpiBuffers {
     fn tx_address(&self) -> u32 {
@@ -123,10 +132,15 @@ impl SpiBuffers {
                 16 => write_register(6, 0),
                 17 => write_register(7, 0),
                 // Upper Cutoff: 3kHz
-                18 => write_register(8, 3),
+                /*18 => write_register(8, 3),
                 19 => write_register(9, 1),
                 20 => write_register(10, 13),
-                21 => write_register(11, 1),
+                21 => write_register(11, 1),*/
+                // Upper Cutoff: 1kHz
+                18 => write_register(8, 46),
+                19 => write_register(9, 2),
+                20 => write_register(10, 30),
+                21 => write_register(11, 3),
                 // Lower Cutoff: 1Hz
                 22 => write_register(12, 44),
                 23 => write_register(13, 6),
@@ -172,7 +186,7 @@ impl SpiBuffers {
             State::Off => {
                 // Should only happen if stop was called while interrupt was
                 // already signalled but not served yet.
-            },
+            }
             State::Starting => {
                 self.state = State::Rx1;
                 Self::fill_readout_commands(&mut self.tx[0..BUFFER_SIZE]);
@@ -183,15 +197,16 @@ impl SpiBuffers {
                 for i in 0..n {
                     self.rx1[i] = self.rx1[BUFFER_SIZE + i];
                 }
-            },
+            }
             State::Rx1 => {
                 self.state = State::Rx2;
                 adjust_pointer(r.txd.ptr.as_ptr(), 0u32.wrapping_sub(OFFSET));
-                let offset = self.rx2_address()
+                let offset = self
+                    .rx2_address()
                     .wrapping_sub(self.rx1_address())
                     .wrapping_sub(OFFSET);
-                let n = adjust_pointer(r.rxd.ptr.as_ptr(), offset)
-                    .wrapping_sub(self.rx2_address()) as usize;
+                let n = adjust_pointer(r.rxd.ptr.as_ptr(), offset).wrapping_sub(self.rx2_address())
+                    as usize;
                 // Copy overflow
                 for i in 0..n {
                     self.rx2[i] = self.rx1[BUFFER_SIZE + i];
@@ -201,24 +216,26 @@ impl SpiBuffers {
                     channels: CHANNEL_COUNT,
                     frames: Vec::<u16>::with_capacity(FRAMES_PER_BUFFER * CHANNEL_COUNT),
                 };
+                let ok = self.rx1[0].to_be() == b'I' as u16;
                 for f in 0..FRAMES_PER_BUFFER {
                     for c in 0..CHANNEL_COUNT {
                         data.frames.push(self.rx1[f * STRIDE + c + 2].to_be());
                     }
                 }
                 match CHANNEL.try_send(data) {
-                    Ok(_) => {},
+                    Ok(_) => if ok { info!("Ok") } else { warn!("Not responding") },
                     Err(_) => warn!("Frame lost!"),
                 };
-            },
+            }
             State::Rx2 => {
                 self.state = State::Rx1;
                 adjust_pointer(r.txd.ptr.as_ptr(), 0u32.wrapping_sub(OFFSET));
-                let offset = self.rx1_address()
+                let offset = self
+                    .rx1_address()
                     .wrapping_sub(self.rx2_address())
                     .wrapping_sub(OFFSET);
-                let n = adjust_pointer(r.rxd.ptr.as_ptr(), offset)
-                    .wrapping_sub(self.rx1_address()) as usize;
+                let n = adjust_pointer(r.rxd.ptr.as_ptr(), offset).wrapping_sub(self.rx1_address())
+                    as usize;
                 // Copy overflow
                 for i in 0..n {
                     self.rx1[i] = self.rx2[BUFFER_SIZE + i];
@@ -226,18 +243,19 @@ impl SpiBuffers {
                 // Generate frame
                 let mut data = RhdData {
                     channels: CHANNEL_COUNT,
-                    frames: Vec::<u16>::with_capacity(FRAMES_PER_BUFFER * CHANNEL_COUNT)
+                    frames: Vec::<u16>::with_capacity(FRAMES_PER_BUFFER * CHANNEL_COUNT),
                 };
+                let ok = self.rx1[0].to_be() == b'I' as u16;
                 for f in 0..FRAMES_PER_BUFFER {
                     for c in 0..CHANNEL_COUNT {
                         data.frames.push(self.rx2[f * STRIDE + c + 2].to_be());
                     }
                 }
                 match CHANNEL.try_send(data) {
-                    Ok(_) => {},
+                    Ok(_) => if ok { info!("Ok") } else { warn!("Not responding") },
                     Err(_) => warn!("Frame lost!"),
                 };
-            },
+            }
         }
     }
 }
@@ -288,16 +306,12 @@ unsafe fn adjust_pointer(x: *mut u32, n: u32) -> u32 {
 
 fn spi_start_task() -> Task<'static> {
     let r = spi_registers();
-    unsafe {
-        Task::new_unchecked(NonNull::new_unchecked(r.tasks_start.as_ptr()))
-    }
+    unsafe { Task::new_unchecked(NonNull::new_unchecked(r.tasks_start.as_ptr())) }
 }
 
 fn spi_end_event() -> Event<'static> {
     let r = spi_registers();
-    unsafe {
-        Event::new_unchecked(NonNull::new_unchecked(r.events_end.as_ptr()))
-    }
+    unsafe { Event::new_unchecked(NonNull::new_unchecked(r.events_end.as_ptr())) }
 }
 
 impl interrupt::typelevel::Handler<interrupt::typelevel::TIMER2> for InterruptHandler {
@@ -322,7 +336,9 @@ impl interrupt::typelevel::Handler<interrupt::typelevel::TIMER2> for InterruptHa
 
 fn timer2_enable_cc0_isr() {
     interrupt::typelevel::TIMER2::set_priority(interrupt::Priority::P2);
-    unsafe { interrupt::typelevel::TIMER2::enable(); }
+    unsafe {
+        interrupt::typelevel::TIMER2::enable();
+    }
     let r = timer2_registers();
     r.intenset.write(|w| w.compare0().set_bit());
 }
@@ -351,9 +367,14 @@ impl<'d> RHD2216<'d> {
         let ppi1 = Ppi::new_one_to_one(ppi1, timer1.cc(0).event_compare(), spi_start_task());
         let ppi2 = Ppi::new_one_to_one(ppi2, spi_end_event(), timer2.task_count());
         let mut rhd = Self {
-            timer1, timer2,
-            ppi1, ppi2,
-            cs, clk, mosi, miso,
+            timer1,
+            timer2,
+            ppi1,
+            ppi2,
+            cs,
+            clk,
+            mosi,
+            miso,
             _spi: spi,
         };
         rhd.spi_setup();
@@ -363,29 +384,37 @@ impl<'d> RHD2216<'d> {
     fn spi_setup(&mut self) {
         let r = spi_registers();
         r.psel.csn.write(|w| unsafe {
-            w
-            .pin().bits(self.cs.pin())
-            .port().bit(self.cs.port() == Port::Port1)
-            .connect().connected()
+            w.pin()
+                .bits(self.cs.pin())
+                .port()
+                .bit(self.cs.port() == Port::Port1)
+                .connect()
+                .connected()
         });
         r.csnpol.write(|w| w.csnpol().low());
         r.psel.sck.write(|w| unsafe {
-            w
-            .pin().bits(self.clk.pin())
-            .port().bit(self.clk.port() == Port::Port1)
-            .connect().connected()
+            w.pin()
+                .bits(self.clk.pin())
+                .port()
+                .bit(self.clk.port() == Port::Port1)
+                .connect()
+                .connected()
         });
         r.psel.mosi.write(|w| unsafe {
-            w
-            .pin().bits(self.mosi.pin())
-            .port().bit(self.mosi.port() == Port::Port1)
-            .connect().connected()
+            w.pin()
+                .bits(self.mosi.pin())
+                .port()
+                .bit(self.mosi.port() == Port::Port1)
+                .connect()
+                .connected()
         });
         r.psel.miso.write(|w| unsafe {
-            w
-            .pin().bits(self.miso.pin())
-            .port().bit(self.miso.port() == Port::Port1)
-            .connect().connected()
+            w.pin()
+                .bits(self.miso.pin())
+                .port()
+                .bit(self.miso.port() == Port::Port1)
+                .connect()
+                .connected()
         });
         r.frequency.write(|w| w.frequency().m16());
         r.enable.write(|w| w.enable().enabled());

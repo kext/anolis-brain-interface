@@ -1,11 +1,11 @@
-use alloc::boxed::Box;
-use core::ptr::NonNull;
-use nrf_softdevice::ble::l2cap;
+use alloc::alloc::{alloc, dealloc};
+use core::{ptr::{NonNull, copy_nonoverlapping}, alloc::Layout, ops::{Deref, DerefMut}, slice, mem::ManuallyDrop};
+use nrf_softdevice::ble::l2cap::Packet;
 
 /// A Packet for use with the L2CAP driver backed by heap allocated memory.
 pub struct BoxPacket<const N: usize> {
     len: usize,
-    data: Box<[u8; N]>,
+    ptr: NonNull<u8>,
 }
 
 impl<const N: usize> BoxPacket<N> {
@@ -13,7 +13,7 @@ impl<const N: usize> BoxPacket<N> {
     pub fn new() -> Self {
         Self {
             len: 0,
-            data: Box::new([0u8; N]),
+            ptr: Self::allocate().unwrap(),
         }
     }
     /// Get the length of the packet.
@@ -22,13 +22,17 @@ impl<const N: usize> BoxPacket<N> {
     }
     /// Get a reference to the packet data.
     pub fn as_bytes(&self) -> &[u8] {
-        &self.data[..self.len]
+        &self
     }
     /// Append the data to the packet.
     /// Panics if the data does not fit into the buffer space.
     pub fn append(&mut self, data: &[u8]) {
-        self.data[self.len..self.len + data.len()].copy_from_slice(data);
-        self.len += data.len();
+        let n = data.len();
+        assert!(self.len + n <= N);
+        unsafe {
+            copy_nonoverlapping(data.as_ptr(), self.ptr.as_ptr().add(self.len), n);
+        }
+        self.len += n;
     }
     /// Clear the packet and set its size to zero.
     pub fn reset(&mut self) {
@@ -36,19 +40,44 @@ impl<const N: usize> BoxPacket<N> {
     }
 }
 
-impl<const N: usize> l2cap::Packet for BoxPacket<N> {
+impl<const N: usize> Drop for BoxPacket<N> {
+    fn drop(&mut self) {
+        unsafe {
+            dealloc(self.ptr.as_ptr(), Layout::array::<u8>(N).unwrap())
+        }
+    }
+}
+
+impl<const N: usize> Deref for BoxPacket<N> {
+    type Target = [u8];
+    fn deref(&self) -> &Self::Target {
+        unsafe {
+            slice::from_raw_parts(self.ptr.as_ptr(), self.len)
+        }
+    }
+}
+
+impl<const N: usize> DerefMut for BoxPacket<N> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe {
+            slice::from_raw_parts_mut(self.ptr.as_ptr(), self.len)
+        }
+    }
+}
+
+impl<const N: usize> Packet for BoxPacket<N> {
     const MTU: usize = N;
     fn allocate() -> Option<NonNull<u8>> {
-        let b = Box::<[u8; N]>::new([0u8; N]);
-        NonNull::new(Box::into_raw(b).cast::<u8>())
+        unsafe {
+            NonNull::new(alloc(Layout::array::<u8>(N).unwrap()))
+        }
     }
     fn into_raw_parts(self) -> (NonNull<u8>, usize) {
-        (NonNull::new(Box::into_raw(self.data).cast::<u8>()).unwrap(), self.len)
+        let me = ManuallyDrop::new(self);
+        (me.ptr, me.len)
     }
     unsafe fn from_raw_parts(ptr: NonNull<u8>, len: usize) -> Self {
         assert!(len <= N);
-        unsafe {
-            Self { len, data: Box::from_raw(ptr.cast::<[u8; N]>().as_ptr()) }
-        }
+        Self { len, ptr }
     }
 }

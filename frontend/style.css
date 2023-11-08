@@ -1,0 +1,625 @@
+@font-face {
+  font-family: inter;
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('fonts/inter-r.woff2') format('woff2');
+  font-named-instance: 'Regular';
+}
+@font-face {
+  font-family: inter;
+  font-style: italic;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('fonts/inter-i.woff2') format('woff2');
+  font-named-instance: 'Italic';
+}
+@font-face {
+  font-family: fira-code;
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('fonts/fira-code.woff2') format('woff2');
+  font-named-instance: 'Regular';
+}
+@font-face {
+  font-family: noto-kufi-arabic;
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('fonts/noto-kufi-arabic.woff2') format('woff2');
+  font-named-instance: 'Regular';
+}
+
+:root {
+  --bg1: #fff;
+  --bg2: #eee;
+  --bg3: #ddd;
+  --bg4: #ccc;
+  --bg5: #bbb;
+  --bg6: #aaa;
+  --text: #000;
+  --text-primary: #36a;
+  --text-fade: #999;
+  --text-on-primary: #fff;
+  --text-on-danger: #fff;
+  --text-on-warning: #000;
+  --logo: #36a;
+  --primary1: #36a;
+  --primary2: #225597;
+  --primary3: #124687;
+  --danger1: #c12;
+  --danger2: #a80003;
+  --danger3: #8e0000;
+  --warning1: #fa2;
+  --success1: #8a2;
+  --border: #999;
+  --led-magenta: #f0f;
+  --led-green: #0f0;
+  --led-cyan: #0ff;
+  --color-light: #000;
+  --color-dark: #eee;
+}
+@media only screen and (prefers-color-scheme: dark) {
+  html:not(.light) {
+    --bg1: #333;
+    --bg2: #222;
+    --bg3: #444;
+    --bg4: #555;
+    --bg5: #666;
+    --bg6: #777;
+    --text: #eee;
+    --border: #666;
+    --logo: #eee;
+  }
+  html:not(.light) [data-color] {
+    color: var(--color-dark);
+  }
+}
+[data-color] {
+  color: var(--color-light);
+}
+
+* {
+  box-sizing: border-box;
+}
+*:first-child {
+  margin-top: 0;
+}
+*:last-child {
+  margin-bottom: 0;
+}
+html {
+  font-family: inter, noto-kufi-arabic, sans-serif;
+  background: var(--bg2);
+  color: var(--text);
+  overflow-y: scroll;
+}
+body {
+  margin: 0 auto;
+  padding: 1em;
+  min-height: 100vh;
+  max-width: 1200px;
+}
+body.loading {
+  display: none;
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(-360deg);
+  }
+}
+.spin {
+  animation: spin 1.4s ease 1;
+}
+.spinning {
+  animation: spin 1.4s linear infinite;
+}
+
+.row {
+  display: flex;
+  flex-direction: row;
+  gap: 0.5em;
+  align-items: center;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+
+.card {
+  padding: 1em;
+  background: var(--bg1);
+}
+.card.alert {
+  background: var(--danger1);
+  color: var(--text-on-danger);
+  text-align: center;
+}
+.card.warning {
+  background: var(--warning1);
+  color: var(--text-on-warning);
+  text-align: center;
+}
+
+.head {
+  display: flex;
+  gap: 1em;
+  align-items: center;
+  justify-content: flex-start;
+}
+.head h1 {
+  font-size: 2.5em;
+  font-weight: 650;
+  margin: 0;
+  flex-grow: 1;
+}
+.head h2 {
+  margin: 0;
+}
+.head img {
+  height: 4em;
+}
+.head .logo {
+  height: 4em;
+  color: var(--logo);
+}
+
+svg.icon {
+  height: 1.25em;
+  padding: 0.125em 0;
+  vertical-align: top;
+}
+
+h2 {
+  font-size: 1.5em;
+  line-height: 1.25;
+  margin: 0.6667em 0 0.3333em;
+}
+h3 {
+  font-size: 1.25em;
+  line-height: 1.25;
+  margin: 0.8em 0 0.4em;
+}
+h4 {
+  font-size: 1em;
+  line-height: 1.25;
+  margin: 1em 0 0.5em;
+}
+p {
+  font-size: 1em;
+  line-height: 1.25;
+  margin: 0.5em 0 0.75em;
+}
+a {
+  color: var(--text-primary);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+
+.w-4 {
+  min-width: 4em;
+}
+.w-8 {
+  min-width: 8em;
+}
+.w-10 {
+  min-width: 10em;
+}
+.w-15 {
+  min-width: 15em;
+}
+
+button {
+  padding: 0.375em 0.5em;
+  text-align: center;
+  color: var(--text);
+  background-color: var(--bg4);
+  font: inherit;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  outline: none;
+  border: 0.125em solid transparent;
+  line-height: 1.25;
+}
+button:hover {
+  background-color: var(--bg5);
+}
+button:active{
+  background-color: var(--bg6);
+}
+button:disabled, button.primary:disabled, .fake-button.disabled {
+  background-color: var(--bg3);
+  color: var(--text-fade);
+  cursor: default;
+}
+button.primary, button.active, .fake-button.primary  {
+  background-color: var(--primary1);
+  color: var(--text-on-primary);
+}
+button.primary:hover {
+  background-color: var(--primary2);
+}
+button.primary:active {
+  background-color: var(--primary3);
+}
+button.primary:disabled, button.primary:disabled:hover, button.primary:disabled:active {
+  background-color: var(--primary1);
+  color: var(--text-fade);
+}
+button.danger, button.active.danger, button.active.danger:disabled, .fake-button.danger {
+  background: var(--danger1);
+  color: var(--text-on-danger);
+}
+button.danger:hover {
+  background: var(--danger2);
+}
+button.danger:active {
+  background: var(--danger3);
+}
+button.danger:disabled, button.danger:disabled:hover, button.danger:disabled:active {
+  background-color: var(--danger1);
+  color: var(--text-fade);
+}
+button:focus-visible {
+  border-color: var(--primary1);
+  background-color: var(--bg2);
+  color: var(--text);
+}
+
+.fake-button {
+  display: inline-block;
+  padding: 0.375em 0.5em;
+  text-align: center;
+  color: var(--text);
+  background-color: var(--bg4);
+  border: 0.125em solid transparent;
+  line-height: 1.25;
+}
+
+.sensor {
+  display: inline-block;
+  padding-right: 1em;
+  font-feature-settings: "tnum";
+}
+
+table {
+  margin: 0.5em 0;
+}
+th, td {
+  padding: 0.125em 0.25em;
+  font-feature-settings: "tnum";
+}
+th {
+  text-align: end;
+}
+
+.text-right {
+  text-align: end;
+}
+.text-center {
+  text-align: center;
+}
+
+.grid {
+  gap: 1em;
+}
+
+pre {
+  white-space: pre-wrap;
+  font-family: fira-code, noto-kufi-arabic, monospace;
+  font-size: inherit;
+  line-height: 1.25;
+  background: var(--bg2);
+  border: 0.125em solid var(--bg2);
+  padding: 0.375em 0.5em;
+  margin: 0;
+  outline: none;
+}
+
+.not-ready {
+  color: var(--led-magenta);
+}
+.ready {
+  color: var(--led-green);
+}
+.recording {
+  color: var(--led-green);
+  animation: recording 2s infinite linear;
+}
+@keyframes recording {
+  0%, 40%, 100% {
+    color: var(--led-green);
+  }
+  50%, 90% {
+    color: var(--led-cyan);
+  }
+}
+
+.text-area {
+  position: relative;
+  margin: 0.5em 0;
+}
+.text-area > textarea {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 100%;
+  resize: none;
+  z-index: 2;
+}
+.text-area > div {
+  white-space: pre-wrap;
+  z-index: 1;
+  user-select: none;
+}
+.text-area > textarea, .text-area > div {
+  font-family: fira-code, noto-kufi-arabic, monospace;
+  font-size: inherit;
+  line-height: 1.25;
+  background: var(--bg1);
+  color: var(--text);
+  border: 0.125em solid var(--border);
+  padding: 0.375em 0.5em;
+  margin: 0;
+  outline: none;
+}
+textarea:focus {
+  border-color: var(--primary1);
+}
+
+input {
+  padding: 0.375em 0.5em;
+  font: inherit;
+  line-height: 1.25;
+  border: 0.125em solid var(--border);
+  background: var(--bg1);
+  color: var(--text);
+  display: block;
+  width: 100%;
+  margin: 0.5em 0 0;
+  outline: none;
+}
+input:first-child {
+  margin-top: 0.25em;
+}
+input:focus {
+  border-color: var(--primary1);
+}
+input.error {
+  border-color: var(--danger1);
+}
+label {
+  display: block;
+  margin: 0.5em 0;
+}
+
+.fake-input {
+  padding: 0.375em 0.5em;
+  color: var(--text);
+  background-color: var(--bg1);
+  border: 0.125em solid var(--border);
+  margin: 0.5em 0 0;
+}
+
+.plot {
+  position: relative;
+  height: min(200px, 20vh);
+  overflow: hidden;
+  background: var(--bg1);
+}
+.plot canvas, .plot svg {
+  position: absolute;
+  display: block;
+  top: 0;
+  left: 0;
+}
+.plot .label, .fake-plot .label {
+  font-weight: bold;
+  position: absolute;
+  top: 0.5em;
+  left: 0.5em;
+}
+.plot .max, .fake-plot .max {
+  position: absolute;
+  top: 0.5em;
+  right: 0.5em;
+  font-feature-settings: "tnum";
+}
+.plot .min, .fake-plot .min {
+  position: absolute;
+  right: 0.5em;
+  bottom: 0.5em;
+  font-feature-settings: "tnum";
+}
+.plot .label, .plot .min, .plot .max, .fake-plot .label, .fake-plot .max, .fake-plot .min {
+  padding: 0 0.25em;
+  background: var(--bg1);
+}
+.fake-plot {
+  position: relative;
+  height: 12.5em;
+  overflow: hidden;
+  background: var(--bg1);
+}
+.fake-plot svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: grid;
+  place-items: center;
+  padding: 1em;
+}
+.modal > div {
+  width: 100%;
+  max-width: 40em;
+  text-align: center;
+}
+.modal .footer, .modal .content {
+  margin-top: 2em;
+}
+.modal .row {
+  justify-content: center;
+}
+
+.progress {
+  background: var(--bg2);
+}
+.progress .progress-bar {
+  background: var(--primary1);
+  height: 1.25em;
+}
+.progress .progress-bar.progress-bar-danger {
+  background: var(--danger1);
+}
+.progress .progress-bar.progress-bar-success {
+  background: var(--success1);
+}
+
+.screenshot {
+  padding: 1em;
+  background: var(--bg2);
+  user-select: none;
+}
+.screenshot.full {
+  font-size: min(8px, (100vw - 100px) / 75);
+  width: 75em;
+}
+.screenshot.medium {
+  font-size: min(12px, (100vw - 100px) / 43.5);
+  width: 43.5em;
+}
+.screenshot.detail {
+  font-size: min(12px, (100vw - 100px) / 38);
+  width: 38em;
+}
+
+/* Raster grid subsystem (rsms.me/raster) */
+.grid {
+  display: grid;
+  --grid-tc: repeat(6, 1fr);
+  grid-template-columns: var(--grid-tc);
+  --grid-cs: 1; /* column start */
+  --grid-ce: -1 /* column end */
+}
+
+/* .cell -- cell or column */
+/*.grid > div { display: block; appearance: none; -webkit-appearance: none }*/
+
+.grid[columns="1"] { --grid-tc: repeat(1, 1fr) }
+.grid[columns="2"] { --grid-tc: repeat(2, 1fr) }
+.grid[columns="3"] { --grid-tc: repeat(3, 1fr) }
+.grid[columns="4"] { --grid-tc: repeat(4, 1fr) }
+.grid[columns="5"] { --grid-tc: repeat(5, 1fr) }
+.grid[columns="6"] { --grid-tc: repeat(6, 1fr) }
+
+/* span=start... */
+.grid > div[span^="1"] { --grid-cs: 1 }
+.grid > div[span^="2"] { --grid-cs: 2 }
+.grid > div[span^="3"] { --grid-cs: 3 }
+.grid > div[span^="4"] { --grid-cs: 4 }
+.grid > div[span^="5"] { --grid-cs: 5 }
+.grid > div[span^="6"] { --grid-cs: 6 }
+
+/* span=...+width, span=...-end */
+.grid > div[span$="+1"], .grid > div[span="1"] { --grid-ce: 1 }
+.grid > div[span$="+2"], .grid > div[span$="-1"], .grid > div[span="2"] { --grid-ce: 2 }
+.grid > div[span$="+3"], .grid > div[span$="-2"], .grid > div[span="3"] { --grid-ce: 3 }
+.grid > div[span$="+4"], .grid > div[span$="-3"], .grid > div[span="4"] { --grid-ce: 4 }
+.grid > div[span$="+5"], .grid > div[span$="-4"], .grid > div[span="5"] { --grid-ce: 5 }
+.grid > div[span$="+6"], .grid > div[span$="-5"], .grid > div[span="6"] { --grid-ce: 6 }
+.grid > div[span$="-6"] { --grid-ce: 7 }
+
+/* connect vars */
+.grid > div[span] { grid-column-end: span var(--grid-ce) }
+.grid > div[span*="+"], .grid > div[span*="-"], .grid > div[span*=".."] {
+  grid-column-start: var(--grid-cs) }
+.grid > div[span*="-"], .grid > div[span*=".."] {
+  grid-column-end: var(--grid-ce) }
+.grid > div[span="row"] { grid-column: 1 / -1 }
+
+/* for window width <= 800 */
+@media only screen and (max-width: 800px) {
+  .grid[columns-s="1"] { --grid-tc: repeat(1, 1fr) }
+  .grid[columns-s="2"] { --grid-tc: repeat(2, 1fr) }
+  .grid[columns-s="3"] { --grid-tc: repeat(3, 1fr) }
+  .grid[columns-s="4"] { --grid-tc: repeat(4, 1fr) }
+  .grid[columns-s="5"] { --grid-tc: repeat(5, 1fr) }
+  .grid[columns-s="6"] { --grid-tc: repeat(6, 1fr) }
+
+  /* span-s=start... */
+  .grid > div[span-s^="1"] { --grid-cs: 1 }
+  .grid > div[span-s^="2"] { --grid-cs: 2 }
+  .grid > div[span-s^="3"] { --grid-cs: 3 }
+  .grid > div[span-s^="4"] { --grid-cs: 4 }
+  .grid > div[span-s^="5"] { --grid-cs: 5 }
+  .grid > div[span-s^="6"] { --grid-cs: 6 }
+
+  /* span-s=...+width, span-s=...-end */
+  .grid > div[span-s$="+1"], .grid > div[span-s="1"] { --grid-ce: 1 }
+  .grid > div[span-s$="+2"], .grid > div[span-s$="-1"], .grid > div[span-s="2"] { --grid-ce: 2 }
+  .grid > div[span-s$="+3"], .grid > div[span-s$="-2"], .grid > div[span-s="3"] { --grid-ce: 3 }
+  .grid > div[span-s$="+4"], .grid > div[span-s$="-3"], .grid > div[span-s="4"] { --grid-ce: 4 }
+  .grid > div[span-s$="+5"], .grid > div[span-s$="-4"], .grid > div[span-s="5"] { --grid-ce: 5 }
+  .grid > div[span-s$="+6"], .grid > div[span-s$="-5"], .grid > div[span-s="6"] { --grid-ce: 6 }
+  .grid > div[span-s$="-6"] { --grid-ce: 7 }
+
+  /* connect vars */
+  .grid > div[span-s] { grid-column-end: span var(--grid-ce) }
+  .grid > div[span-s*="+"], .grid > div[span-s*="-"], .grid > div[span-s*=".."] {
+    grid-column-start: var(--grid-cs) }
+  .grid > div[span-s*="-"], .grid > div[span-s*=".."] {
+    grid-column-end: var(--grid-ce) }
+  .grid > div[span-s="row"] { grid-column: 1 / -1 }
+}
+
+/* for window width >= 1200 */
+@media only screen and (min-width: 1199px) {
+  .grid[columns-l="1"] { --grid-tc: repeat(1, 1fr) }
+  .grid[columns-l="2"] { --grid-tc: repeat(2, 1fr) }
+  .grid[columns-l="3"] { --grid-tc: repeat(3, 1fr) }
+  .grid[columns-l="4"] { --grid-tc: repeat(4, 1fr) }
+  .grid[columns-l="5"] { --grid-tc: repeat(5, 1fr) }
+  .grid[columns-l="6"] { --grid-tc: repeat(6, 1fr) }
+
+  /* span-l=start... */
+  .grid > div[span-l^="1"] { --grid-cs: 1 }
+  .grid > div[span-l^="2"] { --grid-cs: 2 }
+  .grid > div[span-l^="3"] { --grid-cs: 3 }
+  .grid > div[span-l^="4"] { --grid-cs: 4 }
+  .grid > div[span-l^="5"] { --grid-cs: 5 }
+  .grid > div[span-l^="6"] { --grid-cs: 6 }
+
+  /* span-l=...+width, span-l=...-end */
+  .grid > div[span-l$="+1"], .grid > div[span-l="1"] { --grid-ce: 1 }
+  .grid > div[span-l$="+2"], .grid > div[span-l$="-1"], .grid > div[span-l="2"] { --grid-ce: 2 }
+  .grid > div[span-l$="+3"], .grid > div[span-l$="-2"], .grid > div[span-l="3"] { --grid-ce: 3 }
+  .grid > div[span-l$="+4"], .grid > div[span-l$="-3"], .grid > div[span-l="4"] { --grid-ce: 4 }
+  .grid > div[span-l$="+5"], .grid > div[span-l$="-4"], .grid > div[span-l="5"] { --grid-ce: 5 }
+  .grid > div[span-l$="+6"], .grid > div[span-l$="-5"], .grid > div[span-l="6"] { --grid-ce: 6 }
+  .grid > div[span-l$="-6"] { --grid-ce: 7 }
+
+  /* connect vars */
+  .grid > div[span-l] { grid-column-end: span var(--grid-ce) }
+  .grid > div[span-l*="+"], .grid > div[span-l*="-"], .grid > div[span-l*=".."] {
+    grid-column-start: var(--grid-cs) }
+  .grid > div[span-l*="-"], .grid > div[span-l*=".."] {
+    grid-column-end: var(--grid-ce) }
+  .grid > div[span-l="row"] { grid-column: 1 / -1 }
+}

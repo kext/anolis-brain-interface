@@ -13,7 +13,7 @@ use embassy_time::{Duration, Timer};
 use embedded_alloc::Heap;
 use nrf_softdevice::ble::l2cap::{L2cap, Packet};
 use nrf_softdevice::{raw, Softdevice};
-use nrf_softdevice::ble::{Connection, peripheral};
+use nrf_softdevice::ble::{Connection, peripheral, TxPower, Phy};
 use nrf_softdevice::ble::peripheral::ConnectableAdvertisement;
 
 // global logger
@@ -68,19 +68,20 @@ pub fn advertisement() -> ConnectableAdvertisement<'static> {
     }
 }
 
-type MyPacket = BoxPacket<512>;
+type MyPacket = BoxPacket<2048>;
 
 async fn send_rhd_data(rhd: &mut RHD2216<'_>, l2cap: &L2cap<MyPacket>, connection: &Connection) -> Result<(), L2capError<MyPacket>> {
-    let config = nrf_softdevice::ble::l2cap::Config { credits: 8 };
+    let config = nrf_softdevice::ble::l2cap::Config { credits: 3 };
     let channel = l2cap.listen(connection, &config, data_channel::PSM).await?;
+    info!("Starting");
     rhd.start();
     let mut counter = 0u8;
     loop {
         let d = rhd.read().await;
         let mut packet = MyPacket::new();
-        packet.append(&[counter]);
+        packet.append(&[counter, d.channels as u8]);
         counter = counter.wrapping_add(1);
-        for v in d.frames {
+        for v in &d.frames {
             if packet.len() > MyPacket::MTU - 2 {
                 if let Err(e) = channel.tx(packet).await {
                     rhd.stop();
@@ -106,7 +107,7 @@ async fn main(spawner: Spawner) {
     // Initialise allocator
     {
         use core::mem::MaybeUninit;
-        const HEAP_SIZE: usize = 1024 * 64;
+        const HEAP_SIZE: usize = 1024 * 128;
         static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
         unsafe { HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE) }
     }
@@ -129,13 +130,13 @@ async fn main(spawner: Spawner) {
             event_length: 40,
         }),
         conn_gatt: Some(raw::ble_gatt_conn_cfg_t {
-            att_mtu: 114
+            att_mtu: 256,
         }),
         conn_gattc: Some(raw::ble_gattc_conn_cfg_t {
             write_cmd_tx_queue_size: 0,
         }),
         conn_gatts: Some(raw::ble_gatts_conn_cfg_t {
-            hvn_tx_queue_size: 0
+            hvn_tx_queue_size: 0,
         }),
         gatts_attr_tab_size: Some(raw::ble_gatts_cfg_attr_tab_size_t { attr_tab_size: 1024 }),
         gap_role_count: Some(raw::ble_gap_cfg_role_count_t {
@@ -158,8 +159,8 @@ async fn main(spawner: Spawner) {
             ch_count: 1,
             rx_mps: 256,
             tx_mps: 256,
-            rx_queue_size: 10,
-            tx_queue_size: 10,
+            rx_queue_size: 3,
+            tx_queue_size: 20,
         }),
         ..Default::default()
     };
@@ -196,7 +197,9 @@ async fn main(spawner: Spawner) {
 
     loop {
         info!("Waiting for connection");
-        let config = peripheral::Config::default();
+        let mut config = peripheral::Config::default();
+        config.tx_power = TxPower::Plus8dBm;
+        config.secondary_phy = Phy::M2;
 
         let connection = unwrap!(peripheral::advertise_connectable(sd, advertisement(), &config).await);
         info!("advertising done! I have a connection.");
