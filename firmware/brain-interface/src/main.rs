@@ -7,14 +7,22 @@ extern crate alloc;
 use data_channel::{BoxPacket, L2capError};
 use defmt::{info, unwrap};
 use embassy_executor::Spawner;
-use embassy_nrf::{interrupt, bind_interrupts};
-use embassy_nrf::gpio::{Level, Output, OutputDrive, AnyPin};
+use embassy_nrf::{
+    bind_interrupts,
+    gpio::{AnyPin, Level, Output, OutputDrive},
+    interrupt, peripherals,
+    uarte::{self, UarteTx},
+};
 use embassy_time::{Duration, Timer};
 use embedded_alloc::Heap;
-use nrf_softdevice::ble::l2cap::{L2cap, Packet};
-use nrf_softdevice::{raw, Softdevice};
-use nrf_softdevice::ble::{Connection, peripheral, TxPower, Phy};
-use nrf_softdevice::ble::peripheral::ConnectableAdvertisement;
+use nrf_softdevice::{
+    ble::{
+        l2cap::{L2cap, Packet},
+        peripheral::{self, ConnectableAdvertisement},
+        Connection, Phy, TxPower,
+    },
+    raw, Softdevice,
+};
 
 // global logger
 use defmt_rtt as _;
@@ -30,6 +38,7 @@ static HEAP: Heap = Heap::empty();
 
 bind_interrupts!(struct Irqs {
     TIMER2 => rhd2216::InterruptHandler;
+    UARTE1 => uarte::InterruptHandler<peripherals::UARTE1>;
 });
 
 #[embassy_executor::task]
@@ -70,7 +79,11 @@ pub fn advertisement() -> ConnectableAdvertisement<'static> {
 
 type MyPacket = BoxPacket<2048>;
 
-async fn send_rhd_data(rhd: &mut RHD2216<'_>, l2cap: &L2cap<MyPacket>, connection: &Connection) -> Result<(), L2capError<MyPacket>> {
+async fn send_rhd_data(
+    rhd: &mut RHD2216<'_>,
+    l2cap: &L2cap<MyPacket>,
+    connection: &Connection,
+) -> Result<(), L2capError<MyPacket>> {
     let config = nrf_softdevice::ble::l2cap::Config { credits: 3 };
     let channel = l2cap.listen(connection, &config, data_channel::PSM).await?;
     info!("Starting");
@@ -85,7 +98,7 @@ async fn send_rhd_data(rhd: &mut RHD2216<'_>, l2cap: &L2cap<MyPacket>, connectio
             if packet.len() > MyPacket::MTU - 2 {
                 if let Err(e) = channel.tx(packet).await {
                     rhd.stop();
-                    return Err(e.into())
+                    return Err(e.into());
                 }
                 packet = MyPacket::new();
                 packet.append(&[counter]);
@@ -95,7 +108,7 @@ async fn send_rhd_data(rhd: &mut RHD2216<'_>, l2cap: &L2cap<MyPacket>, connectio
         }
         if let Err(e) = channel.tx(packet).await {
             rhd.stop();
-            return Err(e.into())
+            return Err(e.into());
         }
     }
 }
@@ -120,25 +133,25 @@ async fn main(spawner: Spawner) {
 
     let config = nrf_softdevice::Config {
         clock: Some(raw::nrf_clock_lf_cfg_t {
-            source: raw::NRF_CLOCK_LF_SRC_RC as u8,
-            rc_ctiv: 16,
-            rc_temp_ctiv: 2,
+            source: raw::NRF_CLOCK_LF_SRC_SYNTH as u8,
+            rc_ctiv: 0,
+            rc_temp_ctiv: 0,
             accuracy: raw::NRF_CLOCK_LF_ACCURACY_500_PPM as u8,
         }),
         conn_gap: Some(raw::ble_gap_conn_cfg_t {
             conn_count: 1,
             event_length: 40,
         }),
-        conn_gatt: Some(raw::ble_gatt_conn_cfg_t {
-            att_mtu: 256,
-        }),
+        conn_gatt: Some(raw::ble_gatt_conn_cfg_t { att_mtu: 256 }),
         conn_gattc: Some(raw::ble_gattc_conn_cfg_t {
             write_cmd_tx_queue_size: 0,
         }),
         conn_gatts: Some(raw::ble_gatts_conn_cfg_t {
             hvn_tx_queue_size: 0,
         }),
-        gatts_attr_tab_size: Some(raw::ble_gatts_cfg_attr_tab_size_t { attr_tab_size: 1024 }),
+        gatts_attr_tab_size: Some(raw::ble_gatts_cfg_attr_tab_size_t {
+            attr_tab_size: 1024,
+        }),
         gap_role_count: Some(raw::ble_gap_cfg_role_count_t {
             adv_set_count: 1,
             periph_role_count: 5,
@@ -153,7 +166,9 @@ async fn main(spawner: Spawner) {
             write_perm: raw::ble_gap_conn_sec_mode_t {
                 _bitfield_1: raw::ble_gap_conn_sec_mode_t::new_bitfield_1(1, 1),
             },
-            _bitfield_1: raw::ble_gap_cfg_device_name_t::new_bitfield_1(raw::BLE_GATTS_VLOC_STACK as u8),
+            _bitfield_1: raw::ble_gap_cfg_device_name_t::new_bitfield_1(
+                raw::BLE_GATTS_VLOC_STACK as u8,
+            ),
         }),
         conn_l2cap: Some(raw::ble_l2cap_conn_cfg_t {
             ch_count: 1,
@@ -189,23 +204,34 @@ async fn main(spawner: Spawner) {
     unwrap!(spawner.spawn(softdevice_task(sd)));
     unwrap!(spawner.spawn(blink_task(_led1, _led2, _led3, false)));
 
+    // Enable UARTE, otherwise SPI3 will not work.
+    let mut uart = UarteTx::new(p.UARTE1, Irqs, _mode, Default::default());
+    let _ = uart.write(&[1, 2, 3]).await;
+
     let mut rhd = RHD2216::new(
         Irqs,
-        p.SPI3, p.TIMER1, p.TIMER2, p.PPI_CH0.into(), p.PPI_CH1.into(),
-        _rhd_cs, _rhd_clk, _rhd_mosi, _rhd_miso,
+        p.SPI3,
+        p.TIMER1,
+        p.TIMER2,
+        p.PPI_CH0.into(),
+        p.PPI_CH1.into(),
+        _rhd_cs,
+        _rhd_clk,
+        _rhd_mosi,
+        _rhd_miso,
     );
 
     loop {
         info!("Waiting for connection");
         let mut config = peripheral::Config::default();
-        config.tx_power = TxPower::Plus8dBm;
+        config.tx_power = TxPower::Plus4dBm;
         config.secondary_phy = Phy::M2;
 
-        let connection = unwrap!(peripheral::advertise_connectable(sd, advertisement(), &config).await);
-        info!("advertising done! I have a connection.");
-
-        if let Err(_) = send_rhd_data(&mut rhd, &l2cap, &connection).await {
-            info!("Stopped");
+        if let Ok(connection) = peripheral::advertise_connectable(sd, advertisement(), &config).await {
+            info!("advertising done! I have a connection.");
+            if let Err(_) = send_rhd_data(&mut rhd, &l2cap, &connection).await {
+                info!("Stopped");
+            }
         }
     }
 }
