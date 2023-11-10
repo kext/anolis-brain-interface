@@ -53,9 +53,9 @@ async fn blink_task(pin1: AnyPin, pin2: AnyPin, pin3: AnyPin, off: bool) -> ! {
     let mut led_3 = Output::new(pin3, Level::from(off), OutputDrive::Standard);
     loop {
         for i in 0..4 {
-            led_1.set_level(Level::from((i == 0) ^ off));
-            led_2.set_level(Level::from((i == 1) ^ off));
-            led_3.set_level(Level::from((i == 2) ^ off));
+            led_1.set_level(Level::from((i == 4) ^ off));
+            led_2.set_level(Level::from((i == 4) ^ off));
+            led_3.set_level(Level::from((i == 4) ^ off));
             Timer::after(Duration::from_millis(500)).await;
         }
     }
@@ -224,7 +224,7 @@ async fn main(spawner: Spawner) {
     loop {
         info!("Waiting for connection");
         let mut config = peripheral::Config::default();
-        config.tx_power = TxPower::Plus4dBm;
+        config.tx_power = TxPower::ZerodBm;
         config.secondary_phy = Phy::M2;
 
         if let Ok(connection) = peripheral::advertise_connectable(sd, advertisement(), &config).await {

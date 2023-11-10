@@ -15,6 +15,8 @@ use futures::Future;
 // Configuration
 // Number of channels.
 pub const CHANNEL_COUNT: usize = 8;
+// Starting channel.
+const SKIP_CHANNELS: usize = 4;
 // How many samples to read from each channel between interrupts.
 pub const FRAMES_PER_BUFFER: usize = 100;
 // How many commands to send for each frame. Must be at least CHANNEL_COUNT + 2.
@@ -29,6 +31,8 @@ const OVERFLOW: usize = BUFFER_SIZE;
 const TOTAL_BUFFER: usize = BUFFER_SIZE + OVERFLOW;
 // By how many bytes to adjust the DMA pointer. Must be the byte size of one buffer.
 const OFFSET: u32 = BUFFER_SIZE as u32 * 2;
+
+const CHANNEL_MASK: u32 = ((1 << CHANNEL_COUNT) - 1) << SKIP_CHANNELS;
 
 pub struct RHD2216<'d> {
     // We need two timers.
@@ -145,10 +149,10 @@ impl SpiBuffers {
                 22 => write_register(12, 44),
                 23 => write_register(13, 6),
                 // Channel Mask
-                24 => write_register(14, (((1 << CHANNEL_COUNT) - 1) & 255) as u8),
-                25 => write_register(15, ((((1 << CHANNEL_COUNT) - 1) >> 8) & 255) as u8),
-                26 => write_register(16, ((((1 << CHANNEL_COUNT) - 1) >> 16) & 255) as u8),
-                27 => write_register(17, ((((1 << CHANNEL_COUNT) - 1) >> 24) & 255) as u8),
+                24 => write_register(14, (CHANNEL_MASK & 255) as u8),
+                25 => write_register(15, ((CHANNEL_MASK >> 8) & 255) as u8),
+                26 => write_register(16, ((CHANNEL_MASK >> 16) & 255) as u8),
+                27 => write_register(17, ((CHANNEL_MASK >> 24) & 255) as u8),
                 // Leave at least 100µs before calibration starts
                 200 => start_calibration(),
                 _ => dummy_command(),
@@ -159,7 +163,7 @@ impl SpiBuffers {
         for (i, v) in b.iter_mut().enumerate() {
             let n = i % STRIDE;
             *v = if n < CHANNEL_COUNT {
-                convert_channel(n as u8)
+                convert_channel((n + SKIP_CHANNELS) as u8)
             } else {
                 dummy_command()
             }
