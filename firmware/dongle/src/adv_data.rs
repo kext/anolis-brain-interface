@@ -1,9 +1,9 @@
 use nrf_softdevice::raw;
 
-const SERVICE_LIST: &'static [u8] = &[7, 0x3c, 0x53, 0x4c, 0xb6, 0xf0, 0x86, 0x02, 0xa1, 0x85, 0x42, 0x47, 0x83, 0x42, 0x4b, 0xb7, 0xed];
+const SERVICE_LIST: &[u8] = &[7, 0x3c, 0x53, 0x4c, 0xb6, 0xf0, 0x86, 0x02, 0xa1, 0x85, 0x42, 0x47, 0x83, 0x42, 0x4b, 0xb7, 0xed];
 
 pub fn supports_data_service(adv_report: &raw::ble_gap_evt_adv_report_t) -> bool {
-    AdvertisementData::new(adv_report).into_iter().find(|d| *d == SERVICE_LIST).is_some()
+    AdvertisementData::new(adv_report).into_iter().any(|d| *d == *SERVICE_LIST)
 }
 
 /// Iterator over advertisement data.
@@ -26,7 +26,7 @@ impl<'a> Iterator for AdvertisementDataIterator<'a> {
             return None;
         }
         let len = self.data[self.pos] as usize;
-        if self.pos + len + 1 <= self.data.len() {
+        if self.pos + len < self.data.len() {
             let r = Some(&self.data[self.pos + 1..self.pos + len + 1]);
             self.pos += len + 1;
             r

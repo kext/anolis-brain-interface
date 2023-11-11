@@ -229,7 +229,7 @@ async fn main(spawner: Spawner) {
     };
 
     let sd = Softdevice::enable(&config);
-    let l2cap = L2cap::init(&sd);
+    let l2cap = L2cap::init(sd);
 
     unwrap!(spawner.spawn(softdevice_task(sd)));
 
@@ -278,7 +278,7 @@ async fn main(spawner: Spawner) {
         {
             Ok(mut connection) => {
                 info!("Connected");
-                if let Err(_) = connection.phy_update(PhySet::M2, PhySet::M2) {
+                if connection.phy_update(PhySet::M2, PhySet::M2).is_err() {
                     warn!("Could not upgrade to 2M PHY");
                 }
                 info!("MTU {}", connection.att_mtu());

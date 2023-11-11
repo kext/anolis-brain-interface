@@ -353,6 +353,7 @@ fn timer2_disable_cc0_isr() {
 }
 
 impl<'d> RHD2216<'d> {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         _irq: impl interrupt::typelevel::Binding<interrupt::typelevel::TIMER2, InterruptHandler> + 'd,
         spi: peripherals::SPI3,

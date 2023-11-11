@@ -62,7 +62,7 @@ async fn blink_task(pin1: AnyPin, pin2: AnyPin, pin3: AnyPin, off: bool) -> ! {
 }
 
 #[rustfmt::skip]
-const ADVERTISEMENT_DATA: &'static [u8] = &[
+const ADVERTISEMENT_DATA: &[u8] = &[
     // Flags
     2, 1, raw::BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE as u8,
     // Complete List of 128-bit Service Class UUIDs
@@ -199,7 +199,7 @@ async fn main(spawner: Spawner) {
     let _rhd_miso: AnyPin = _b4;
 
     let sd = Softdevice::enable(&config);
-    let l2cap = L2cap::init(&sd);
+    let l2cap = L2cap::init(sd);
 
     unwrap!(spawner.spawn(softdevice_task(sd)));
     unwrap!(spawner.spawn(blink_task(_led1, _led2, _led3, false)));
@@ -223,13 +223,17 @@ async fn main(spawner: Spawner) {
 
     loop {
         info!("Waiting for connection");
-        let mut config = peripheral::Config::default();
-        config.tx_power = TxPower::ZerodBm;
-        config.secondary_phy = Phy::M2;
+        let config = peripheral::Config {
+            tx_power: TxPower::ZerodBm,
+            secondary_phy: Phy::M2,
+            ..Default::default()
+        };
 
-        if let Ok(connection) = peripheral::advertise_connectable(sd, advertisement(), &config).await {
+        if let Ok(connection) =
+            peripheral::advertise_connectable(sd, advertisement(), &config).await
+        {
             info!("advertising done! I have a connection.");
-            if let Err(_) = send_rhd_data(&mut rhd, &l2cap, &connection).await {
+            if send_rhd_data(&mut rhd, &l2cap, &connection).await.is_err() {
                 info!("Stopped");
             }
         }

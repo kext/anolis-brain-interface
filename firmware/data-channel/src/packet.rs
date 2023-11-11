@@ -20,9 +20,13 @@ impl<const N: usize> BoxPacket<N> {
     pub fn len(&self) -> usize {
         self.len
     }
+    /// Test if the packet is empty.
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
     /// Get a reference to the packet data.
     pub fn as_bytes(&self) -> &[u8] {
-        &self
+        self
     }
     /// Append the data to the packet.
     /// Panics if the data does not fit into the buffer space.
@@ -45,6 +49,12 @@ impl<const N: usize> Drop for BoxPacket<N> {
         unsafe {
             dealloc(self.ptr.as_ptr(), Layout::array::<u8>(N).unwrap())
         }
+    }
+}
+
+impl<const N: usize> Default for BoxPacket<N> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
