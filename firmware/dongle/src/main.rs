@@ -138,9 +138,8 @@ async fn handle_connection(
     let mut start = None;
     loop {
         let packet = channel.rx().await?;
-        let data = packet.as_bytes();
-        usb_sender.write(data).await?;
-        bytes += data.len();
+        usb_sender.write(&packet).await?;
+        bytes += packet.len();
         counter += 1;
         if counter == 100 {
             counter = 0;

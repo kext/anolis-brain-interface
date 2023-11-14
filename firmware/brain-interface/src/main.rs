@@ -17,7 +17,7 @@ use embassy_time::{Duration, Timer};
 use embedded_alloc::Heap;
 use nrf_softdevice::{
     ble::{
-        l2cap::{L2cap, Packet},
+        l2cap::{L2cap, Packet, RxError},
         peripheral::{self, ConnectableAdvertisement},
         Connection, Phy, TxPower,
     },
@@ -91,7 +91,13 @@ async fn send_rhd_data(
     let mut counter = 0u8;
     loop {
         let d = rhd.read().await;
-        let mut packet = MyPacket::new();
+        let mut packet = match MyPacket::new() {
+            Some(packet) => packet,
+            None => {
+                rhd.stop();
+                return Err(RxError::AllocateFailed.into());
+            }
+        };
         packet.append(&[counter, d.channels as u8]);
         counter = counter.wrapping_add(1);
         for v in &d.frames {
@@ -100,7 +106,13 @@ async fn send_rhd_data(
                     rhd.stop();
                     return Err(e.into());
                 }
-                packet = MyPacket::new();
+                packet = match MyPacket::new() {
+                    Some(packet) => packet,
+                    None => {
+                        rhd.stop();
+                        return Err(RxError::AllocateFailed.into());
+                    }
+                };
                 packet.append(&[counter]);
                 counter = counter.wrapping_add(1);
             }
