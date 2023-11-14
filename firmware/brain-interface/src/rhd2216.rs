@@ -57,8 +57,8 @@ pub struct RHD2216<'d> {
     // The pins can be any pins.
     cs: AnyPin,
     clk: AnyPin,
-    mosi: AnyPin,
-    miso: AnyPin,
+    sdo: AnyPin,
+    sdi: AnyPin,
     // The SPI bus must be SPI3 because it is the only one with support for the CS pin.
     _spi: PeripheralRef<'d, peripherals::SPI3>,
 }
@@ -405,8 +405,8 @@ impl<'d> RHD2216<'d> {
         ppi2: AnyConfigurableChannel,
         cs: AnyPin,
         clk: AnyPin,
-        mosi: AnyPin,
-        miso: AnyPin,
+        sdo: AnyPin,
+        sdi: AnyPin,
     ) -> Self {
         into_ref!(spi);
         let timer1 = timer::Timer::new(timer1);
@@ -420,8 +420,8 @@ impl<'d> RHD2216<'d> {
             ppi2,
             cs,
             clk,
-            mosi,
-            miso,
+            sdo,
+            sdi,
             _spi: spi,
         };
         rhd.spi_setup();
@@ -449,17 +449,17 @@ impl<'d> RHD2216<'d> {
         });
         r.psel.mosi.write(|w| unsafe {
             w.pin()
-                .bits(self.mosi.pin())
+                .bits(self.sdo.pin())
                 .port()
-                .bit(self.mosi.port() == Port::Port1)
+                .bit(self.sdo.port() == Port::Port1)
                 .connect()
                 .connected()
         });
         r.psel.miso.write(|w| unsafe {
             w.pin()
-                .bits(self.miso.pin())
+                .bits(self.sdi.pin())
                 .port()
-                .bit(self.miso.port() == Port::Port1)
+                .bit(self.sdi.port() == Port::Port1)
                 .connect()
                 .connected()
         });
