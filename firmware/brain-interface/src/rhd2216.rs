@@ -1,3 +1,11 @@
+//! Driver for the RHD2216 Electrophysiological ADC
+//!
+//! Once started the driver generates a steady command stream on the SPI3 interface.
+//! Use of the SPI3 interface is necessary because it is the only one supporting automatic
+//! handling of the chip select pin.
+//!
+//! To make the code easier the timers are hardcoded to TIMER1 and TIMER2.
+
 use alloc::vec::Vec;
 use core::{arch::asm, cell::RefCell, marker::PhantomData, ptr::NonNull};
 use critical_section::Mutex;
@@ -13,27 +21,28 @@ use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Channe
 use futures::Future;
 
 // Configuration
-// Number of channels.
+/// Number of channels.
 pub const CHANNEL_COUNT: usize = 8;
-// Starting channel.
+/// Starting channel.
 const SKIP_CHANNELS: usize = 4;
-// How many samples to read from each channel between interrupts.
+/// How many samples to read from each channel between interrupts.
 pub const FRAMES_PER_BUFFER: usize = 100;
-// How many commands to send for each frame. Must be at least CHANNEL_COUNT + 2.
+/// How many commands to send for each frame. Must be at least CHANNEL_COUNT + 2.
 const STRIDE: usize = 10;
-// Number of 16MHz ticks between two commands
+/// Number of 16MHz ticks between two commands
 const TIMER_INTERVAL: usize = 320;
-// Size of one full buffer between interrupts.
+/// Size of one full buffer between interrupts.
 const BUFFER_SIZE: usize = FRAMES_PER_BUFFER * STRIDE;
-// How much overflow space to leave after ever buffer.
+/// How much overflow space to leave after ever buffer.
 const OVERFLOW: usize = BUFFER_SIZE;
-// Total buffer space.
+/// Total buffer space.
 const TOTAL_BUFFER: usize = BUFFER_SIZE + OVERFLOW;
-// By how many bytes to adjust the DMA pointer. Must be the byte size of one buffer.
+/// By how many bytes to adjust the DMA pointer. Must be the byte size of one buffer.
 const OFFSET: u32 = BUFFER_SIZE as u32 * 2;
-
+/// Mask of active channels.
 const CHANNEL_MASK: u32 = ((1 << CHANNEL_COUNT) - 1) << SKIP_CHANNELS;
 
+/// A handle for the RHD2216 ADC.
 pub struct RHD2216<'d> {
     // We need two timers.
     // Timer 1 generates the SPI transaction interval.
@@ -54,50 +63,67 @@ pub struct RHD2216<'d> {
     _spi: PeripheralRef<'d, peripherals::SPI3>,
 }
 
+/// A packet of data from the ADC
 #[derive(Debug)]
 pub struct RhdData {
+    /// Number of channels.
     pub channels: usize,
+    /// Interleaved sample data.
     pub frames: Vec<u16>,
 }
 
+/// Get the register block for SPIM3.
 fn spi_registers() -> &'static pac::spim3::RegisterBlock {
     unsafe { &*pac::SPIM3::ptr() }
 }
 
+/// Get the register block for TIMER1.
 fn timer1_registers() -> &'static pac::timer2::RegisterBlock {
     unsafe { &*pac::TIMER1::ptr() }
 }
 
+/// Get the register block for TIMER2.
 fn timer2_registers() -> &'static pac::timer2::RegisterBlock {
     unsafe { &*pac::TIMER2::ptr() }
 }
 
 // Functions to generate commands as u16.
 // Most of these intentionally use LE byte order with swapped bytes.
+/// Command to convert channel `c`.
 const fn convert_channel(c: u8) -> u16 {
     (c as u16).to_le()
 }
+/// Command to read register `r`.
 const fn read_register(r: u8) -> u16 {
     (r as u16 | 192).to_le()
 }
+/// Command to write register `r` with value `d`.
 const fn write_register(r: u8, d: u8) -> u16 {
     (((d as u16) << 8) | (r as u16) | 128).to_le()
 }
+/// Command to start the calibration sequence.
 const fn start_calibration() -> u16 {
     0b01010101u16
 }
+/// Dummy command. Reads register 40. Should contain the fixed value `b'I'`.
 const fn dummy_command() -> u16 {
     read_register(40)
 }
 
+/// State in which the ADC is.
 #[derive(PartialEq)]
 enum State {
-    Off,      // The ADC is stopped.
-    Starting, // The ADC is executing the calibration sequence.
-    Rx1,      // Receiving into buffer rx1.
-    Rx2,      // Receiving into buffer rx2.
+    /// The ADC is stopped.
+    Off,
+    /// The ADC is executing the calibration sequence.
+    Starting,
+    /// Receiving into buffer `rx1`.
+    Rx1,
+    /// Receiving into buffer `rx2`.
+    Rx2,
 }
 
+/// Buffer space for the SPI.
 struct SpiBuffers {
     tx: [u16; TOTAL_BUFFER],
     rx1: [u16; TOTAL_BUFFER],
@@ -105,24 +131,31 @@ struct SpiBuffers {
     state: State,
 }
 
+/// Static buffer space protected by a mutex.
 static SPI_BUFFERS: Mutex<RefCell<SpiBuffers>> = Mutex::new(RefCell::new(SpiBuffers {
     tx: [0u16; TOTAL_BUFFER],
     rx1: [0u16; TOTAL_BUFFER],
     rx2: [0u16; TOTAL_BUFFER],
     state: State::Off,
 }));
+/// Channel for passing the data from the interrupt to the main thread.
 static CHANNEL: Channel<CriticalSectionRawMutex, RhdData, 16> = Channel::new();
 
 impl SpiBuffers {
+    /// Get the address of the TX buffer.
     fn tx_address(&self) -> u32 {
         &self.tx as *const _ as u32
     }
+    /// Get the address of the RX1 buffer.
     fn rx1_address(&self) -> u32 {
         &self.rx1 as *const _ as u32
     }
+    /// Get the address of the RX2 buffer.
     fn rx2_address(&self) -> u32 {
         &self.rx2 as *const _ as u32
     }
+    /// Fill the buffer b with startup commands.
+    /// Generates a sequence of commands that sets all registers and then starts a calibration.
     fn fill_startup_commands(b: &mut [u16]) {
         for (i, v) in b.iter_mut().enumerate() {
             *v = match i {
@@ -159,6 +192,7 @@ impl SpiBuffers {
             }
         }
     }
+    /// Fill the buffer with commands to read out all channels repeatedly.
     fn fill_readout_commands(b: &mut [u16]) {
         for (i, v) in b.iter_mut().enumerate() {
             let n = i % STRIDE;
@@ -169,6 +203,7 @@ impl SpiBuffers {
             }
         }
     }
+    /// Setup the SPI buffers and DMA pointers.
     unsafe fn setup(&mut self) {
         let r = spi_registers();
         if self.state != State::Off {
@@ -184,6 +219,8 @@ impl SpiBuffers {
         r.rxd.maxcnt.write(|w| unsafe { w.maxcnt().bits(2) });
         r.rxd.list.write(|w| w.list().array_list());
     }
+    /// Update the buffer state and swap the RX buffers.
+    /// Call this every time the interrupt runs.
     unsafe fn update(&mut self) {
         let r = spi_registers();
         match self.state {
@@ -308,11 +345,13 @@ unsafe fn adjust_pointer(x: *mut u32, n: u32) -> u32 {
     v
 }
 
+/// Get the SPI start task for use with the PPI.
 fn spi_start_task() -> Task<'static> {
     let r = spi_registers();
     unsafe { Task::new_unchecked(NonNull::new_unchecked(r.tasks_start.as_ptr())) }
 }
 
+/// Get the SPI end event for use with the PPI.
 fn spi_end_event() -> Event<'static> {
     let r = spi_registers();
     unsafe { Event::new_unchecked(NonNull::new_unchecked(r.events_end.as_ptr())) }
@@ -338,6 +377,7 @@ impl interrupt::typelevel::Handler<interrupt::typelevel::TIMER2> for InterruptHa
     }
 }
 
+/// Enable the CC0 interrupt for TIMER2.
 fn timer2_enable_cc0_isr() {
     interrupt::typelevel::TIMER2::set_priority(interrupt::Priority::P2);
     unsafe {
@@ -347,12 +387,14 @@ fn timer2_enable_cc0_isr() {
     r.intenset.write(|w| w.compare0().set_bit());
 }
 
+/// Disable the CC0 interrupt for TIMER2.
 fn timer2_disable_cc0_isr() {
     let r = timer2_registers();
     r.intenset.write(|w| w.compare0().clear_bit());
 }
 
 impl<'d> RHD2216<'d> {
+    /// Create a handle to the RHD2216.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         _irq: impl interrupt::typelevel::Binding<interrupt::typelevel::TIMER2, InterruptHandler> + 'd,
@@ -385,7 +427,7 @@ impl<'d> RHD2216<'d> {
         rhd.spi_setup();
         rhd
     }
-
+    /// Setup the SPI registers and configure the IO pins.
     fn spi_setup(&mut self) {
         let r = spi_registers();
         r.psel.csn.write(|w| unsafe {
@@ -424,7 +466,7 @@ impl<'d> RHD2216<'d> {
         r.frequency.write(|w| w.frequency().m16());
         r.enable.write(|w| w.enable().enabled());
     }
-
+    /// Start the ADC.
     pub fn start(&mut self) {
         critical_section::with(|cs| unsafe {
             SPI_BUFFERS.borrow_ref_mut(cs).setup();
@@ -441,7 +483,7 @@ impl<'d> RHD2216<'d> {
         self.timer1.set_frequency(timer::Frequency::F16MHz);
         self.timer1.start();
     }
-
+    /// Stop the ADC.
     pub fn stop(&mut self) {
         critical_section::with(|cs| {
             let mut x = SPI_BUFFERS.borrow_ref_mut(cs);
@@ -454,7 +496,7 @@ impl<'d> RHD2216<'d> {
         // Drain channel.
         while CHANNEL.try_receive().is_ok() {}
     }
-
+    /// Wait until a data packet from the ADC is ready.
     pub fn read(&mut self) -> impl Future<Output = RhdData> {
         CHANNEL.receive()
     }

@@ -1,3 +1,5 @@
+//! WebUSB Device Class
+
 use embassy_usb::driver::{Driver, Endpoint, EndpointError, EndpointIn, EndpointOut};
 use embassy_usb::Builder;
 use embassy_usb::types::StringIndex;

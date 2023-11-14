@@ -1,3 +1,8 @@
+//! The firmware for the dongle.
+//!
+//! Scans for a brain interface and connects to it.
+//! The data is then send over USB to the connected PC.
+
 #![no_std]
 #![no_main]
 #![feature(type_alias_impl_trait)]
@@ -31,6 +36,7 @@ use defmt_rtt as _;
 use embassy_nrf as _;
 use panic_probe as _;
 
+/// Use the embedded alloc heap to enable [`BoxPacket`].
 #[global_allocator]
 static HEAP: Heap = Heap::empty();
 
@@ -49,6 +55,7 @@ impl VbusDetect for VbusAlways {
     }
 }
 
+/// Driver for [embassy_usb].
 type MyDriver = Driver<'static, embassy_nrf::peripherals::USBD, VbusAlways>;
 
 /// Task for the Softdevice.
@@ -57,11 +64,13 @@ async fn softdevice_task(sd: &'static Softdevice) -> ! {
     sd.run().await
 }
 
+/// Task for the USB interface.
 #[embassy_executor::task]
 async fn usb_task(mut device: UsbDevice<'static, MyDriver>) {
     device.run().await;
 }
 
+/// Enable the USB interface.
 fn start_usb(spawner: &Spawner, usbd: embassy_nrf::peripherals::USBD) -> WebUsb<'static, MyDriver> {
     // Create the driver, from the HAL.
     let driver = Driver::new(usbd, Irqs, VbusAlways {});
@@ -107,8 +116,10 @@ fn start_usb(spawner: &Spawner, usbd: embassy_nrf::peripherals::USBD) -> WebUsb<
     class
 }
 
+/// Alias for the packet type to have one place to change the size.
 type MyPacket = BoxPacket<2048>;
 
+/// Unified error type for [`handle_connection`].
 struct ConnectionError {}
 impl From<SetupError> for ConnectionError {
     fn from(_value: SetupError) -> Self {
@@ -126,6 +137,7 @@ impl From<EndpointError> for ConnectionError {
     }
 }
 
+/// Receive data from the L2CAP channel and forward it to the USB interface.
 async fn handle_connection(
     l2cap: &L2cap<MyPacket>,
     connection: &Connection,
@@ -160,6 +172,7 @@ async fn handle_connection(
     }
 }
 
+/// The main task.
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
     info!("Start");

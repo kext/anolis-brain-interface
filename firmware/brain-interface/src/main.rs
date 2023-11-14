@@ -1,3 +1,5 @@
+//! Firmware for the Anolis Brain Interface
+
 #![no_std]
 #![no_main]
 #![feature(type_alias_impl_trait)]
@@ -33,6 +35,7 @@ use panic_probe as _;
 mod rhd2216;
 use rhd2216::RHD2216;
 
+/// Use the embedded alloc heap to enable [`Vec`](alloc::vec::Vec) and [`BoxPacket`].
 #[global_allocator]
 static HEAP: Heap = Heap::empty();
 
@@ -41,6 +44,7 @@ bind_interrupts!(struct Irqs {
     UARTE1 => uarte::InterruptHandler<peripherals::UARTE1>;
 });
 
+/// The Softdevice task. Must be started after enabling the Softdevice.
 #[embassy_executor::task]
 async fn softdevice_task(sd: &'static Softdevice) -> ! {
     sd.run().await
@@ -61,6 +65,8 @@ async fn blink_task(pin1: AnyPin, pin2: AnyPin, pin3: AnyPin, off: bool) -> ! {
     }
 }
 
+/// Advertisement data for the device.
+/// Contains the UUID of the brain interface service so the dongle knows to which device to connect.
 #[rustfmt::skip]
 const ADVERTISEMENT_DATA: &[u8] = &[
     // Flags
@@ -70,6 +76,7 @@ const ADVERTISEMENT_DATA: &[u8] = &[
     17, 7, 0x3c, 0x53, 0x4c, 0xb6, 0xf0, 0x86, 0x02, 0xa1, 0x85, 0x42, 0x47, 0x83, 0x42, 0x4b, 0xb7, 0xed,
 ];
 
+/// Get the [`ConnectableAdvertisement`] for this device.
 pub fn advertisement() -> ConnectableAdvertisement<'static> {
     ConnectableAdvertisement::ScannableUndirected {
         adv_data: ADVERTISEMENT_DATA,
@@ -77,8 +84,10 @@ pub fn advertisement() -> ConnectableAdvertisement<'static> {
     }
 }
 
+/// Alias for the packet type to have one place to change the size.
 type MyPacket = BoxPacket<2048>;
 
+/// Start the RHD and keep sending data packets over the L2CAP channel.
 async fn send_rhd_data(
     rhd: &mut RHD2216<'_>,
     l2cap: &L2cap<MyPacket>,
@@ -125,6 +134,7 @@ async fn send_rhd_data(
     }
 }
 
+/// The main task.
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
     info!("Start");

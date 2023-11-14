@@ -1,20 +1,24 @@
+//! Module for parsing advertisement data.
+
 use nrf_softdevice::raw;
 
+/// The UUID of the anolis brain interface service.
 const SERVICE_LIST: &[u8] = &[7, 0x3c, 0x53, 0x4c, 0xb6, 0xf0, 0x86, 0x02, 0xa1, 0x85, 0x42, 0x47, 0x83, 0x42, 0x4b, 0xb7, 0xed];
 
+/// Check if the advertisement report indicates support for the anolis brain interface service.
 pub fn supports_data_service(adv_report: &raw::ble_gap_evt_adv_report_t) -> bool {
     AdvertisementData::new(adv_report).into_iter().any(|d| *d == *SERVICE_LIST)
 }
 
 /// Iterator over advertisement data.
-/// Advertisement data is a list of bytes
-struct AdvertisementDataIterator<'a> {
+pub struct AdvertisementDataIterator<'a> {
     data: &'a [u8],
     pos: usize,
 }
 
 impl<'a> AdvertisementDataIterator<'a> {
-    fn new(data: &'a [u8]) -> Self {
+    /// Create a new iterator from the given byte slice.
+    pub fn new(data: &'a [u8]) -> Self {
         Self { data, pos: 0 }
     }
 }
@@ -46,15 +50,21 @@ fn get_advertisement_data(adv_report: &raw::ble_gap_evt_adv_report_t) -> &[u8] {
     }
 }
 
-struct AdvertisementData<'a> {
+/// Handle for the advertisement data in an advertisement report.
+pub struct AdvertisementData<'a> {
     data: &'a [u8],
 }
 
 impl<'a> AdvertisementData<'a> {
-    fn new(adv_report: &'a raw::ble_gap_evt_adv_report_t) -> Self {
+    /// Get the advertisement data from a raw advertisement report.
+    pub fn new(adv_report: &'a raw::ble_gap_evt_adv_report_t) -> Self {
         Self {
             data: get_advertisement_data(adv_report),
         }
+    }
+    /// Get an iterator over the data without moving out.
+    pub fn iter(&self) -> AdvertisementDataIterator<'a> {
+        AdvertisementDataIterator::new(self.data)
     }
 }
 
