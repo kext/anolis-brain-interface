@@ -3,7 +3,7 @@
 ## Components
 
 The firmware consists of three parts.
-The brain interface firmware can be found in the [``brain-interface`](brain-interface) directory.
+The brain interface firmware can be found in the [`brain-interface`](brain-interface) directory.
 The firmware for the dongle is in the [`dongle`](dongle) directory.
 Some shared components are in the [`data-channel`](data-channel) directory.
 
