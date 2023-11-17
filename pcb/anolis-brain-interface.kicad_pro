@@ -458,7 +458,7 @@
       "idf": "",
       "netlist": "",
       "specctra_dsn": "",
-      "step": "",
+      "step": "anolis-brain-interface-14x17mm.step",
       "vrml": ""
     },
     "page_layout_descr_file": ""
