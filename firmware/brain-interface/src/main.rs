@@ -96,41 +96,23 @@ async fn send_rhd_data(
     let config = nrf_softdevice::ble::l2cap::Config { credits: 3 };
     let channel = l2cap.listen(connection, &config, data_channel::PSM).await?;
     info!("Starting");
-    rhd.start();
+    let mut rhd = rhd.start();
     let mut counter = 0u8;
     loop {
         let d = rhd.read().await;
-        let mut packet = match MyPacket::new() {
-            Some(packet) => packet,
-            None => {
-                rhd.stop();
-                return Err(RxError::AllocateFailed.into());
-            }
-        };
+        let mut packet = MyPacket::new().ok_or(RxError::AllocateFailed)?;
         packet.append(&[counter, d.channels as u8]);
         counter = counter.wrapping_add(1);
         for v in &d.frames {
             if packet.len() > MyPacket::MTU - 2 {
-                if let Err(e) = channel.tx(packet).await {
-                    rhd.stop();
-                    return Err(e.into());
-                }
-                packet = match MyPacket::new() {
-                    Some(packet) => packet,
-                    None => {
-                        rhd.stop();
-                        return Err(RxError::AllocateFailed.into());
-                    }
-                };
+                channel.tx(packet).await?;
+                packet = MyPacket::new().ok_or(RxError::AllocateFailed)?;
                 packet.append(&[counter]);
                 counter = counter.wrapping_add(1);
             }
             packet.append(&v.to_le_bytes());
         }
-        if let Err(e) = channel.tx(packet).await {
-            rhd.stop();
-            return Err(e.into());
-        }
+        channel.tx(packet).await?;
     }
 }
 

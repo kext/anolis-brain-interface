@@ -65,7 +65,7 @@ pub struct RHD2216<'d> {
 
 /// A packet of data from the ADC
 #[derive(Debug)]
-pub struct RhdData {
+pub struct Data {
     /// Number of channels.
     pub channels: usize,
     /// Interleaved sample data.
@@ -139,7 +139,7 @@ static SPI_BUFFERS: Mutex<RefCell<SpiBuffers>> = Mutex::new(RefCell::new(SpiBuff
     state: State::Off,
 }));
 /// Channel for passing the data from the interrupt to the main thread.
-static CHANNEL: Channel<CriticalSectionRawMutex, RhdData, 16> = Channel::new();
+static CHANNEL: Channel<CriticalSectionRawMutex, Data, 16> = Channel::new();
 
 impl SpiBuffers {
     /// Get the address of the TX buffer.
@@ -253,7 +253,7 @@ impl SpiBuffers {
                     self.rx2[i] = self.rx1[BUFFER_SIZE + i];
                 }
                 // Generate frame
-                let mut data = RhdData {
+                let mut data = Data {
                     channels: CHANNEL_COUNT,
                     frames: Vec::<u16>::with_capacity(FRAMES_PER_BUFFER * CHANNEL_COUNT),
                 };
@@ -282,7 +282,7 @@ impl SpiBuffers {
                     self.rx1[i] = self.rx2[BUFFER_SIZE + i];
                 }
                 // Generate frame
-                let mut data = RhdData {
+                let mut data = Data {
                     channels: CHANNEL_COUNT,
                     frames: Vec::<u16>::with_capacity(FRAMES_PER_BUFFER * CHANNEL_COUNT),
                 };
@@ -467,7 +467,7 @@ impl<'d> RHD2216<'d> {
         r.enable.write(|w| w.enable().enabled());
     }
     /// Start the ADC.
-    pub fn start(&mut self) {
+    pub fn start<'a>(&'a mut self) -> Running<'a, 'd> {
         critical_section::with(|cs| unsafe {
             SPI_BUFFERS.borrow_ref_mut(cs).setup();
         });
@@ -482,9 +482,10 @@ impl<'d> RHD2216<'d> {
         self.ppi2.enable();
         self.timer1.set_frequency(timer::Frequency::F16MHz);
         self.timer1.start();
+        Running { rhd: self }
     }
     /// Stop the ADC.
-    pub fn stop(&mut self) {
+    fn stop(&mut self) {
         critical_section::with(|cs| {
             let mut x = SPI_BUFFERS.borrow_ref_mut(cs);
             x.state = State::Off;
@@ -497,7 +498,27 @@ impl<'d> RHD2216<'d> {
         while CHANNEL.try_receive().is_ok() {}
     }
     /// Wait until a data packet from the ADC is ready.
-    pub fn read(&mut self) -> impl Future<Output = RhdData> {
+    fn read(&mut self) -> impl Future<Output = Data> {
         CHANNEL.receive()
+    }
+}
+
+/// Token for a running RHD.
+/// The RHD automatically gets stopped when this token gets dropped.
+pub struct Running<'a, 'd> {
+    /// A reference to the RHD.
+    rhd: &'a mut RHD2216<'d>,
+}
+
+impl<'a, 'd> Running<'a, 'd> {
+    /// Wait until a data packet from the ADC is ready.
+    pub fn read(&mut self) -> impl Future<Output = Data> {
+        self.rhd.read()
+    }
+}
+
+impl<'a, 'd> Drop for Running<'a, 'd> {
+    fn drop(&mut self) {
+        self.rhd.stop()
     }
 }
