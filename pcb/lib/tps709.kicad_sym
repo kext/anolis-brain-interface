@@ -6,7 +6,7 @@
     (property "Value" "TPS70933" (at 0 -6.35 0) (do_not_autoplace)
       (effects (font (size 1.27 1.27)))
     )
-    (property "Footprint" "Package_TO_SOT_SMD:SOT-23-5" (at 0 0 0)
+    (property "Footprint" "Package_TO_SOT_SMD:TSOT-23-5" (at 0 0 0)
       (effects (font (size 1.27 1.27)) hide)
     )
     (property "Datasheet" "" (at 0 0 0)
