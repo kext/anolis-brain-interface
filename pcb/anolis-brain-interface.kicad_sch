@@ -1994,7 +1994,7 @@
     (property "Datasheet" "~" (at 124.46 156.21 0)
       (effects (font (size 1.27 1.27)) hide)
     )
-    (property "Order Number" "755-SFR01MZPF2672" (at 124.46 156.21 0)
+    (property "Order Number" "71-CRCW0402-50K-E3" (at 124.46 156.21 0)
       (effects (font (size 1.27 1.27)) hide)
     )
     (property "Supplier" "Mouser" (at 124.46 156.21 0)

@@ -1141,7 +1141,7 @@
     (at 139.35 83.85 -90)
     (descr "Resistor SMD 0402 (1005 Metric), square (rectangular) end terminal, IPC_7351 nominal, (Body size source: IPC-SM-782 page 72, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
     (tags "resistor")
-    (property "Order Number" "755-SFR01MZPF2672")
+    (property "Order Number" "71-CRCW0402-50K-E3")
     (property "Sheetfile" "anolis-brain-interface.kicad_sch")
     (property "Sheetname" "")
     (property "Supplier" "Mouser")
