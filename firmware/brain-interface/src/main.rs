@@ -192,8 +192,8 @@ async fn main(spawner: Spawner) {
 
     let _rhd_cs: AnyPin = _b1;
     let _rhd_clk: AnyPin = _b2;
-    let _rhd_sdo: AnyPin = _b3;
-    let _rhd_sdi: AnyPin = _b4;
+    let _rhd_mosi: AnyPin = _b3;
+    let _rhd_miso: AnyPin = _b4;
 
     let sd = Softdevice::enable(&config);
     let l2cap = L2cap::init(sd);
@@ -214,8 +214,8 @@ async fn main(spawner: Spawner) {
         p.PPI_CH1.into(),
         _rhd_cs,
         _rhd_clk,
-        _rhd_sdo,
-        _rhd_sdi,
+        _rhd_mosi,
+        _rhd_miso,
     );
 
     loop {
