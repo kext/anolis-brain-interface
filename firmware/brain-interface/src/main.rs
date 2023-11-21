@@ -97,19 +97,12 @@ async fn send_rhd_data(
     let channel = l2cap.listen(connection, &config, data_channel::PSM).await?;
     info!("Starting");
     let mut rhd = rhd.start();
-    let mut counter = 0u8;
     loop {
         let d = rhd.read().await;
         let mut packet = MyPacket::new().ok_or(RxError::AllocateFailed)?;
-        packet.append(&[counter, d.channels as u8]);
-        counter = counter.wrapping_add(1);
+        assert!(MyPacket::MTU / 2 > d.frames.len());
+        packet.append(&[(d.sequence_number & 255) as u8, d.channels as u8]);
         for v in &d.frames {
-            if packet.len() > MyPacket::MTU - 2 {
-                channel.tx(packet).await?;
-                packet = MyPacket::new().ok_or(RxError::AllocateFailed)?;
-                packet.append(&[counter]);
-                counter = counter.wrapping_add(1);
-            }
             packet.append(&v.to_le_bytes());
         }
         channel.tx(packet).await?;

@@ -68,6 +68,8 @@ pub struct RHD2216<'d> {
 pub struct Data {
     /// Number of channels.
     pub channels: usize,
+    /// Number of the data packet. If a number is missing, it means you missed a packet.
+    pub sequence_number: usize,
     /// Interleaved sample data.
     pub frames: Vec<u16>,
 }
@@ -129,6 +131,7 @@ struct SpiBuffers {
     rx1: [u16; TOTAL_BUFFER],
     rx2: [u16; TOTAL_BUFFER],
     state: State,
+    sequence_number: usize,
 }
 
 /// Static buffer space protected by a mutex.
@@ -137,6 +140,7 @@ static SPI_BUFFERS: Mutex<RefCell<SpiBuffers>> = Mutex::new(RefCell::new(SpiBuff
     rx1: [0u16; TOTAL_BUFFER],
     rx2: [0u16; TOTAL_BUFFER],
     state: State::Off,
+    sequence_number: 0,
 }));
 /// Channel for passing the data from the interrupt to the main thread.
 static CHANNEL: Channel<CriticalSectionRawMutex, Data, 16> = Channel::new();
@@ -212,6 +216,7 @@ impl SpiBuffers {
         Self::fill_startup_commands(&mut self.tx[0..BUFFER_SIZE]);
         Self::fill_readout_commands(&mut self.tx[BUFFER_SIZE..]);
         self.state = State::Starting;
+        self.sequence_number = 0;
         r.txd.ptr.write(|w| unsafe { w.bits(self.tx_address()) });
         r.txd.maxcnt.write(|w| unsafe { w.maxcnt().bits(2) });
         r.txd.list.write(|w| w.list().array_list());
@@ -255,8 +260,10 @@ impl SpiBuffers {
                 // Generate frame
                 let mut data = Data {
                     channels: CHANNEL_COUNT,
+                    sequence_number: self.sequence_number,
                     frames: Vec::<u16>::with_capacity(FRAMES_PER_BUFFER * CHANNEL_COUNT),
                 };
+                self.sequence_number = self.sequence_number.wrapping_add(1);
                 let ok = self.rx1[0].to_be() == b'I' as u16;
                 for f in 0..FRAMES_PER_BUFFER {
                     for c in 0..CHANNEL_COUNT {
@@ -284,8 +291,10 @@ impl SpiBuffers {
                 // Generate frame
                 let mut data = Data {
                     channels: CHANNEL_COUNT,
+                    sequence_number: self.sequence_number,
                     frames: Vec::<u16>::with_capacity(FRAMES_PER_BUFFER * CHANNEL_COUNT),
                 };
+                self.sequence_number = self.sequence_number.wrapping_add(1);
                 let ok = self.rx1[0].to_be() == b'I' as u16;
                 for f in 0..FRAMES_PER_BUFFER {
                     for c in 0..CHANNEL_COUNT {
