@@ -2377,7 +2377,7 @@
     (property "Datasheet" "~" (at 92.71 101.6 0)
       (effects (font (size 1.27 1.27)) hide)
     )
-    (property "Order Number" "581-KGM05ACG1E102JH" (at 92.71 101.6 0)
+    (property "Order Number" "581-04025C103JAT2A" (at 92.71 101.6 0)
       (effects (font (size 1.27 1.27)) hide)
     )
     (property "Supplier" "Mouser" (at 92.71 101.6 0)
