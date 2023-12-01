@@ -11,7 +11,10 @@ const loadFile = name => {
   for (let i = 0; i < samples; ++i) {
     result[i] = data.readFloatLE(i * 4 + 48)
   }
-  return result
+  return {
+    samples: result,
+    rate: Number(data.readBigUInt64LE(24))
+  }
 }
 
 const plusminus = n => {
@@ -24,12 +27,12 @@ const phys = ['2M']
 const channelCounts = [8]
 const sampleRates = [2500, 5000]
 const txPowers = [-12, -8, -4, 0, 4, 8]
-const windowSize = 750e3
 
 let csv = 'PHY,Channel Count,Sample Rate [Hz],TX Power [dBm],Current [mA],Base Current [mA],Peak Current [mA]\n'
 phys.forEach(phy => {
   channelCounts.forEach(channelCount => {
     sampleRates.forEach(sampleRate => {
+      let tsv = 'tx_power\taverage_current\n'
       txPowers.forEach(txPower => {
         const name = [
           sampleRate + 'sps',
@@ -38,7 +41,8 @@ phys.forEach(phy => {
           phy.toLowerCase(),
         ].join('-') + '.bin.gz'
         try {
-          const samples = loadFile(name)
+          const {samples, rate} = loadFile(name)
+          let windowSize = samples.length //rate / 2
           let n = Math.floor(samples.length / windowSize)
           for (let i = 0; i < n; ++i) {
             let sum = 0
@@ -56,6 +60,10 @@ phys.forEach(phy => {
               (min / 68 * 1000).toFixed(2),
               (max / 68 * 1000).toFixed(2),
             ].join(',') + '\n'
+            tsv += [
+              txPower,
+              (sum / windowSize / 68 * 1000).toFixed(2),
+            ].join('\t') + '\n'
           }
           console.log('Processed ' + name)
         } catch (e) {
@@ -63,6 +71,11 @@ phys.forEach(phy => {
           console.error(e)
         }
       })
+      fs.writeFileSync([
+        sampleRate + 'sps',
+        channelCount + 'ch',
+        phy.toLowerCase(),
+      ].join('-') + '.dat', tsv)
     })
   })
 })

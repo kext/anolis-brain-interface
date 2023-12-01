@@ -9,22 +9,22 @@ data <- read_csv("data.csv") %>%
 png(width = 8, height = 5, units = "in", res = 300)
 
 ggplot(data) +
-  aes(`TX Power [dBm]`, `Current [mA]`, colour = `Sample Rate [Hz]`) +
-  geom_boxplot() +
+  aes(`TX Power [dBm]`, `Current [mA]`, fill = `Sample Rate [Hz]`) +
+  geom_col(position = "dodge") +
   labs(
     title = "Average System Current"
   )
 
 ggplot(data) +
-  aes(`TX Power [dBm]`, `Peak Current [mA]`, colour = `Sample Rate [Hz]`) +
-  geom_boxplot() +
+  aes(`TX Power [dBm]`, `Peak Current [mA]`, fill = `Sample Rate [Hz]`) +
+  geom_col(position = "dodge") +
   labs(
     title = "Peak System Current"
   )
 
 ggplot(data) +
-  aes(`TX Power [dBm]`, `Base Current [mA]`, colour = `Sample Rate [Hz]`) +
-  geom_boxplot() +
+  aes(`TX Power [dBm]`, `Base Current [mA]`, fill = `Sample Rate [Hz]`) +
+  geom_col(position = "dodge") +
   labs(
     title = "Baseline System Current"
   )
