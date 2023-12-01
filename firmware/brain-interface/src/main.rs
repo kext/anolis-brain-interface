@@ -6,9 +6,12 @@
 
 extern crate alloc;
 
+use core::cell::RefCell;
+
 use data_channel::{BoxPacket, L2capError};
 use defmt::{info, unwrap};
 use embassy_executor::Spawner;
+use embassy_futures::join::join;
 use embassy_nrf::{
     bind_interrupts,
     gpio::{AnyPin, Level, Output, OutputDrive},
@@ -19,9 +22,9 @@ use embassy_time::{Duration, Timer};
 use embedded_alloc::Heap;
 use nrf_softdevice::{
     ble::{
-        l2cap::{L2cap, Packet, RxError},
+        l2cap::{self, L2cap, Packet, RxError},
         peripheral::{self, ConnectableAdvertisement},
-        Connection, Phy, TxPower,
+        Phy, TxPower,
     },
     raw, Softdevice,
 };
@@ -87,17 +90,24 @@ pub fn advertisement() -> ConnectableAdvertisement<'static> {
 /// Alias for the packet type to have one place to change the size.
 type MyPacket = BoxPacket<2048>;
 
+/// Shared state between the receiver and sender task.
+#[derive(defmt::Format)]
+struct State {
+    should_stop: bool,
+}
+
 /// Start the RHD and keep sending data packets over the L2CAP channel.
 async fn send_rhd_data(
     rhd: &mut RHD2216<'_>,
-    l2cap: &L2cap<MyPacket>,
-    connection: &Connection,
+    channel: l2cap::Channel<MyPacket>,
+    state: &RefCell<State>,
 ) -> Result<(), L2capError<MyPacket>> {
-    let config = nrf_softdevice::ble::l2cap::Config { credits: 3 };
-    let channel = l2cap.listen(connection, &config, data_channel::PSM).await?;
     info!("Starting");
     let mut rhd = rhd.start();
     loop {
+        if state.borrow().should_stop {
+            return Ok(());
+        }
         let d = rhd.read().await;
         let mut packet = MyPacket::new().ok_or(RxError::AllocateFailed)?;
         assert!(MyPacket::MTU / 2 > d.frames.len());
@@ -106,6 +116,16 @@ async fn send_rhd_data(
             packet.append(&v.to_le_bytes());
         }
         channel.tx(packet).await?;
+    }
+}
+
+/// Receive commands and interpret them.
+async fn receive_commands(
+    channel: l2cap::Channel<MyPacket>,
+    state: &RefCell<State>,
+) -> () {
+    if let Ok(_) = channel.rx().await {
+        state.borrow_mut().should_stop = true;
     }
 }
 
@@ -151,8 +171,8 @@ async fn main(spawner: Spawner) {
         }),
         gap_role_count: Some(raw::ble_gap_cfg_role_count_t {
             adv_set_count: 1,
-            periph_role_count: 5,
-            central_role_count: 15,
+            periph_role_count: 1,
+            central_role_count: 1,
             central_sec_count: 0,
             _bitfield_1: raw::ble_gap_cfg_role_count_t::new_bitfield_1(0),
         }),
@@ -168,7 +188,7 @@ async fn main(spawner: Spawner) {
             ),
         }),
         conn_l2cap: Some(raw::ble_l2cap_conn_cfg_t {
-            ch_count: 1,
+            ch_count: 2,
             rx_mps: 256,
             tx_mps: 256,
             rx_queue_size: 3,
@@ -223,6 +243,7 @@ async fn main(spawner: Spawner) {
         let config = peripheral::Config {
             tx_power: TxPower::ZerodBm,
             secondary_phy: Phy::M2,
+            interval: 160,
             ..Default::default()
         };
 
@@ -230,9 +251,20 @@ async fn main(spawner: Spawner) {
             peripheral::advertise_connectable(sd, advertisement(), &config).await
         {
             info!("advertising done! I have a connection.");
-            if send_rhd_data(&mut rhd, &l2cap, &connection).await.is_err() {
-                info!("Stopped");
+            let config = nrf_softdevice::ble::l2cap::Config { credits: 3 };
+            let data_channel = l2cap.listen(&connection, &config, 1).await;
+            let command_channel = l2cap.listen(&connection, &config, 2).await;
+            if let (Ok(data_channel), Ok(command_channel)) = (data_channel, command_channel) {
+                let state = RefCell::new(State {
+                    should_stop: false,
+                });
+                let _result = join(
+                    send_rhd_data(&mut rhd, data_channel, &state),
+                    receive_commands(command_channel, &state)
+                ).await;
+                info!("{}", _result);
             }
         }
+        Timer::after_millis(1000).await;
     }
 }

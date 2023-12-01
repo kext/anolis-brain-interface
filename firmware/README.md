@@ -43,3 +43,9 @@ To flash the firmware for production, use the following command: `cargo flash --
 To build the documentation for the project, run `cargo doc`.
 You can then find the generated documentation files in the `target/thumbv7em-none-eabihf/doc` directory.
 The can be viewed in any web browser.
+
+## Development Extras
+
+For optimal development experience you should install [Visual Studio Code](https://code.visualstudio.com/).
+Once installed go to the extensions tab and install **rust-analyzer**.
+This extension brings rich code hints and auto completion including access to all the documentation which can be a huge time saver.

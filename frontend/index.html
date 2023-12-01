@@ -12,11 +12,26 @@
 </head>
 <body>
   <div class="grid" columns="1">
-    <div v-if="device === null">
-      <button @click="connect()"><icon-zap-16></icon-zap-16> Connect</button>
-    </div>
-    <div v-if="start > 0">
-      {{transferred}} ({{speed}})
+    <div class="row">
+      <div v-if="device === null">
+        <button @click="connect()"><icon-zap-16></icon-zap-16> Connect</button>
+      </div>
+      <div v-else>
+        <button @click="running = !running">
+          <template v-if="running">
+            <icon-square-16></icon-square-16>
+            Stop
+          </template>
+          <template v-else>
+            <icon-circle-16></icon-circle-16>
+            Start
+          </template>
+        </button>
+      </div>
+      <div style="flex-grow:1"></div>
+      <div v-if="start > 0">
+        {{transferred}} ({{speed}})
+      </div>
     </div>
     <div class="grid" columns="2" columns-s="1">
       <div v-for="p in plots">

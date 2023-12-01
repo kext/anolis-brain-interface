@@ -5,7 +5,8 @@ const app = Vue.createApp({
       device: null,
       start: 0,
       transferred: 0,
-      plots: []
+      plots: [],
+      running: false,
     }
   },
   computed: {
@@ -33,7 +34,10 @@ const app = Vue.createApp({
     },
     clearPlots(count) {
       //const colors = ['#09d', '#c12', '#fa2', '#8a2']
-      const colors = ['#09d']
+      //const colors = ['#09d']
+      const colors = [
+        '#b1667e', '#b16c4c', '#977d30', '#668e4f', '#239382', '#2b8cad', '#697dbc', '#976da9'
+      ]
       let plots = []
       for (let i = 0; i < count; ++i) {
         plots.push(Vue.shallowRef({
@@ -94,7 +98,9 @@ const app = Vue.createApp({
       this.start = Date.now()
       this.transferred = 0
       while (true) {
-        await this.device.transferOut(1, new Uint8Array([1,2,3,4]))
+        if (this.running) {
+          await this.device.transferOut(1, new Uint8Array([1,2,3,4]))
+        }
         await ms(100)
       }
     }

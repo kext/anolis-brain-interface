@@ -67,7 +67,6 @@ const plot = app => {
     },
     mounted() {
       const div = this.$el
-      console.log(div)
       const label = document.createElement('div')
       const maxText = document.createElement('div')
       const minText = document.createElement('div')

@@ -10,6 +10,9 @@
 pub mod adv_data;
 pub mod webusb;
 
+use core::cell::RefCell;
+
+use critical_section::Mutex;
 use data_channel::BoxPacket;
 use defmt::{info, unwrap, warn};
 use embassy_executor::Spawner;
@@ -18,13 +21,13 @@ use embassy_nrf::{
     interrupt::{self, InterruptExt},
     usb::{vbus_detect::VbusDetect, Driver},
 };
-use embassy_time::Instant;
+use embassy_time::{Duration, Instant, Timer};
 use embassy_usb::{driver::EndpointError, msos, Builder, UsbDevice};
 use embedded_alloc::Heap;
 use nrf_softdevice::ble::{
     central::{self, ConnectConfig, ScanConfig},
-    l2cap::{L2cap, RxError, SetupError},
-    Address, AddressType, Connection, PhySet, TxPower,
+    l2cap::{self, L2cap, RxError, SetupError},
+    Address, AddressType, PhySet, TxPower,
 };
 use nrf_softdevice::{raw, Softdevice};
 use static_cell::make_static;
@@ -119,6 +122,46 @@ fn start_usb(spawner: &Spawner, usbd: embassy_nrf::peripherals::USBD) -> WebUsb<
 /// Alias for the packet type to have one place to change the size.
 type MyPacket = BoxPacket<2048>;
 
+/// Shared state for communication between the tasks.
+struct State {
+    /// Time of the last activity on the USB.
+    last_usb_activity: Option<Instant>,
+}
+impl State {
+    /// Create a new state.
+    const fn new() -> Self {
+        Self {
+            last_usb_activity: None,
+        }
+    }
+}
+
+/// Global shared state.
+static STATE: Mutex<RefCell<State>> = Mutex::new(RefCell::new(State::new()));
+/// USB timeout.
+const USB_TIMEOUT: Duration = Duration::from_secs(1);
+
+fn usb_active() -> bool {
+    critical_section::with(|cs| {
+        let state = STATE.borrow_ref(cs);
+        state
+            .last_usb_activity
+            .map_or(false, |t| t + USB_TIMEOUT > Instant::now())
+    })
+}
+
+#[embassy_executor::task]
+async fn usb_read_task(mut receiver: webusb::Receiver<'static, MyDriver>) -> ! {
+    loop {
+        let mut data = [0u8; 20];
+        let _ = receiver.read(&mut data).await;
+        critical_section::with(|cs| {
+            let mut state = STATE.borrow_ref_mut(cs);
+            state.last_usb_activity.replace(Instant::now());
+        });
+    }
+}
+
 /// Unified error type for [`handle_connection`].
 struct ConnectionError {}
 impl From<SetupError> for ConnectionError {
@@ -139,36 +182,21 @@ impl From<EndpointError> for ConnectionError {
 
 /// Receive data from the L2CAP channel and forward it to the USB interface.
 async fn handle_connection(
-    l2cap: &L2cap<MyPacket>,
-    connection: &Connection,
+    data_channel: l2cap::Channel<MyPacket>,
+    command_channel: l2cap::Channel<MyPacket>,
     usb_sender: &mut webusb::Sender<'static, MyDriver>,
 ) -> Result<(), ConnectionError> {
-    let config = nrf_softdevice::ble::l2cap::Config { credits: 20 };
-    let channel = l2cap.setup(connection, &config, data_channel::PSM).await?;
-    let mut bytes = 0;
-    let mut counter = 0;
-    let mut start = None;
+    let mut stopped = false;
     loop {
-        let packet = channel.rx().await?;
-        usb_sender.write(&packet).await?;
-        bytes += packet.len();
-        counter += 1;
-        if counter == 100 {
-            counter = 0;
-            match start {
-                None => {
-                    start = Some(Instant::now());
-                    bytes = 0;
-                }
-                Some(t0) => {
-                    let t = Instant::now();
-                    let d = t - t0;
-                    info!("{}", bytes as u64 * 8000 / d.as_millis());
-                    start = Some(t);
-                    bytes = 0;
-                }
-            }
+        if !usb_active() && !stopped {
+            command_channel
+                .tx(MyPacket::new().ok_or(ConnectionError {})?)
+                .await
+                .map_err(|_| ConnectionError {})?;
+            stopped = true;
         }
+        let packet = data_channel.rx().await?;
+        usb_sender.write(&packet).await?;
     }
 }
 
@@ -214,8 +242,8 @@ async fn main(spawner: Spawner) {
         }),
         gap_role_count: Some(raw::ble_gap_cfg_role_count_t {
             adv_set_count: 1,
-            periph_role_count: 5,
-            central_role_count: 15,
+            periph_role_count: 1,
+            central_role_count: 1,
             central_sec_count: 0,
             _bitfield_1: raw::ble_gap_cfg_role_count_t::new_bitfield_1(0),
         }),
@@ -231,7 +259,7 @@ async fn main(spawner: Spawner) {
             ),
         }),
         conn_l2cap: Some(raw::ble_l2cap_conn_cfg_t {
-            ch_count: 1,
+            ch_count: 2,
             rx_mps: 256,
             tx_mps: 256,
             rx_queue_size: 20,
@@ -248,17 +276,22 @@ async fn main(spawner: Spawner) {
     info!("Setting up USB");
     let mut usb = start_usb(&spawner, p.USBD);
     usb.wait_connection().await;
-    let (mut usb_sender, mut usb_receiver) = usb.split();
+    let (mut usb_sender, usb_receiver) = usb.split();
     info!("Waiting for USB");
-    let mut data = [0u8; 20];
-    let _ = usb_receiver.read(&mut data).await;
+
+    unwrap!(spawner.spawn(usb_read_task(usb_receiver)));
 
     let mut led = Output::new(p.P0_24, Level::Low, OutputDrive::Standard);
     led.set_high();
 
     loop {
+        while !usb_active() {
+            Timer::after_millis(100).await;
+        }
+        info!("Connecting ...");
         let mut config = ScanConfig::default();
-        let addr = central::scan(sd, &config, |adv_report| {
+        config.timeout = 200;
+        let addr = match central::scan(sd, &config, |adv_report| {
             if adv_data::supports_data_service(adv_report) {
                 Some(adv_report.peer_addr.addr)
             } else {
@@ -266,10 +299,12 @@ async fn main(spawner: Spawner) {
             }
         })
         .await
-        .unwrap();
+        {
+            Ok(addr) => addr,
+            Err(_) => continue,
+        };
         info!("Found {:?}", addr);
         let whitelist = [&Address::new(AddressType::RandomStatic, addr)];
-        config.timeout = 200;
         config.whitelist = Some(&whitelist[..]);
         config.phys = PhySet::M2;
         config.tx_power = TxPower::Plus8dBm;
@@ -282,7 +317,7 @@ async fn main(spawner: Spawner) {
                     conn_sup_timeout: 100,
                     min_conn_interval: 40,
                     max_conn_interval: 40,
-                    slave_latency: 5,
+                    slave_latency: 0,
                 },
             },
         )
@@ -294,13 +329,17 @@ async fn main(spawner: Spawner) {
                     warn!("Could not upgrade to 2M PHY");
                 }
                 info!("MTU {}", connection.att_mtu());
-                if handle_connection(&l2cap, &connection, &mut usb_sender)
-                    .await
-                    .is_err()
-                {
-                    warn!("Error in handle_connection");
+                let config = nrf_softdevice::ble::l2cap::Config { credits: 20 };
+                let data_channel = l2cap.setup(&connection, &config, 1).await;
+                let command_channel = l2cap.setup(&connection, &config, 2).await;
+                if let (Ok(data_channel), Ok(command_channel)) = (data_channel, command_channel) {
+                    if handle_connection(data_channel, command_channel, &mut usb_sender)
+                        .await
+                        .is_err()
+                    {
+                        info!("Connection ended");
+                    }
                 }
-                let _ = connection.disconnect();
             }
             Err(_) => warn!("Connection failed"),
         }

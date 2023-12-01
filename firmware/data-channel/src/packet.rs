@@ -3,6 +3,7 @@ use core::{ptr::{NonNull, copy_nonoverlapping}, alloc::Layout, ops::{Deref, Dere
 use nrf_softdevice::ble::l2cap::Packet;
 
 /// A Packet for use with the L2CAP driver backed by heap allocated memory.
+#[derive(defmt::Format)]
 pub struct BoxPacket<const N: usize> {
     len: usize,
     ptr: NonNull<u8>,

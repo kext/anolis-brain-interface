@@ -11,6 +11,8 @@ embassy-sync = { git = "https://github.com/embassy-rs/embassy.git" }
 embassy-usb = { git = "https://github.com/embassy-rs/embassy.git" }
 nrf-softdevice = { git = "https://github.com/embassy-rs/nrf-softdevice.git" }
 nrf-softdevice-s140 = { git = "https://github.com/embassy-rs/nrf-softdevice.git" }
+#nrf-softdevice = { path = "../../nrf-softdevice/nrf-softdevice" }
+#nrf-softdevice-s140 = { path = "../../nrf-softdevice/nrf-softdevice-s140" }
 
 [profile.release]
 debug = 2

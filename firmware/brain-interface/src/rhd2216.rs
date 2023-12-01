@@ -26,11 +26,11 @@ pub const CHANNEL_COUNT: usize = 8;
 /// Starting channel.
 const SKIP_CHANNELS: usize = 4;
 /// How many samples to read from each channel between interrupts.
-pub const FRAMES_PER_BUFFER: usize = 100;
+pub const FRAMES_PER_BUFFER: usize = 50;
 /// How many commands to send for each frame. Must be at least [`CHANNEL_COUNT`] + 2.
 const STRIDE: usize = 10;
 /// Number of 16MHz ticks between two commands
-const TIMER_INTERVAL: usize = 320;
+const TIMER_INTERVAL: usize = 640;
 /// Size of one full buffer between interrupts.
 const BUFFER_SIZE: usize = FRAMES_PER_BUFFER * STRIDE;
 /// How much overflow space to leave after ever buffer.

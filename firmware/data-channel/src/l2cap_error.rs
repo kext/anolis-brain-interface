@@ -1,7 +1,7 @@
 use nrf_softdevice::ble::l2cap::{SetupError, RxError, TxError, Packet};
 
 /// Unified error type for all L2CAP errors.
-#[derive(Debug)]
+#[derive(defmt::Format)]
 pub enum L2capError<P: Packet> {
     SetupError(SetupError),
     RxError(RxError),
