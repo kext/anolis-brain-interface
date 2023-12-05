@@ -1,8 +1,10 @@
 //! WebUSB Device Class
 
-use embassy_usb::driver::{Driver, Endpoint, EndpointError, EndpointIn, EndpointOut};
-use embassy_usb::Builder;
-use embassy_usb::types::StringIndex;
+use embassy_usb::{
+    driver::{Driver, Endpoint, EndpointError, EndpointIn, EndpointOut},
+    types::StringIndex,
+    Builder,
+};
 
 /// Packet level implementation of a WebUSB device.
 ///
@@ -24,7 +26,11 @@ pub struct WebUsb<'d, D: Driver<'d>> {
 impl<'d, D: Driver<'d>> WebUsb<'d, D> {
     /// Creates a new WebUsb with the provided UsbBus and max_packet_size in bytes. For
     /// full-speed devices, max_packet_size has to be one of 8, 16, 32 or 64.
-    pub fn new(builder: &mut Builder<'d, D>, max_packet_size: u16, name: Option<StringIndex>) -> Self {
+    pub fn new(
+        builder: &mut Builder<'d, D>,
+        max_packet_size: u16,
+        name: Option<StringIndex>,
+    ) -> Self {
         assert!(builder.control_buf_len() >= 7);
 
         let mut func = builder.function(255, 0, 0);
@@ -37,10 +43,7 @@ impl<'d, D: Driver<'d>> WebUsb<'d, D> {
 
         drop(func);
 
-        WebUsb {
-            read_ep,
-            write_ep,
-        }
+        WebUsb { read_ep, write_ep }
     }
 
     /// Gets the maximum packet size in bytes.
@@ -61,7 +64,9 @@ impl<'d, D: Driver<'d>> WebUsb<'d, D> {
         let mut start = 0;
         while start <= data.len() {
             let end = start + sz;
-            self.write_ep.write(&data[start..end.min(data.len())]).await?;
+            self.write_ep
+                .write(&data[start..end.min(data.len())])
+                .await?;
             start = end;
         }
         Ok(())
@@ -132,7 +137,9 @@ impl<'d, D: Driver<'d>> Sender<'d, D> {
         let mut start = 0;
         while start <= data.len() {
             let end = start + sz;
-            self.write_ep.write(&data[start..end.min(data.len())]).await?;
+            self.write_ep
+                .write(&data[start..end.min(data.len())])
+                .await?;
             start = end;
         }
         Ok(())

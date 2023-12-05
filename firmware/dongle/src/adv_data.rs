@@ -3,11 +3,18 @@
 use nrf_softdevice::raw;
 
 /// The UUID of the anolis brain interface service.
-const SERVICE_LIST: &[u8] = &[7, 0x3c, 0x53, 0x4c, 0xb6, 0xf0, 0x86, 0x02, 0xa1, 0x85, 0x42, 0x47, 0x83, 0x42, 0x4b, 0xb7, 0xed];
+#[rustfmt::skip]
+const SERVICE_LIST: &[u8] = &[
+    7,
+    0x3c, 0x53, 0x4c, 0xb6, 0xf0, 0x86, 0x02, 0xa1,
+    0x85, 0x42, 0x47, 0x83, 0x42, 0x4b, 0xb7, 0xed,
+];
 
 /// Check if the advertisement report indicates support for the anolis brain interface service.
 pub fn supports_data_service(adv_report: &raw::ble_gap_evt_adv_report_t) -> bool {
-    AdvertisementData::new(adv_report).into_iter().any(|d| *d == *SERVICE_LIST)
+    AdvertisementData::new(adv_report)
+        .into_iter()
+        .any(|d| *d == *SERVICE_LIST)
 }
 
 /// Iterator over advertisement data.

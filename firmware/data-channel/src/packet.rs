@@ -1,5 +1,11 @@
 use alloc::alloc::{alloc, dealloc};
-use core::{ptr::{NonNull, copy_nonoverlapping}, alloc::Layout, ops::{Deref, DerefMut}, slice, mem::ManuallyDrop};
+use core::{
+    alloc::Layout,
+    mem::ManuallyDrop,
+    ops::{Deref, DerefMut},
+    ptr::{copy_nonoverlapping, NonNull},
+    slice,
+};
 use nrf_softdevice::ble::l2cap::Packet;
 
 /// A Packet for use with the L2CAP driver backed by heap allocated memory.
@@ -12,9 +18,7 @@ pub struct BoxPacket<const N: usize> {
 impl<const N: usize> BoxPacket<N> {
     /// Allocate a new empty packet.
     pub fn new() -> Option<Self> {
-        Self::allocate().map(|ptr| {
-            Self { len: 0, ptr }
-        })
+        Self::allocate().map(|ptr| Self { len: 0, ptr })
     }
     /// Append the data to the packet.
     /// Panics if the data does not fit into the buffer space.
@@ -34,35 +38,27 @@ impl<const N: usize> BoxPacket<N> {
 
 impl<const N: usize> Drop for BoxPacket<N> {
     fn drop(&mut self) {
-        unsafe {
-            dealloc(self.ptr.as_ptr(), Layout::array::<u8>(N).unwrap())
-        }
+        unsafe { dealloc(self.ptr.as_ptr(), Layout::array::<u8>(N).unwrap()) }
     }
 }
 
 impl<const N: usize> Deref for BoxPacket<N> {
     type Target = [u8];
     fn deref(&self) -> &Self::Target {
-        unsafe {
-            slice::from_raw_parts(self.ptr.as_ptr(), self.len)
-        }
+        unsafe { slice::from_raw_parts(self.ptr.as_ptr(), self.len) }
     }
 }
 
 impl<const N: usize> DerefMut for BoxPacket<N> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        unsafe {
-            slice::from_raw_parts_mut(self.ptr.as_ptr(), self.len)
-        }
+        unsafe { slice::from_raw_parts_mut(self.ptr.as_ptr(), self.len) }
     }
 }
 
 impl<const N: usize> Packet for BoxPacket<N> {
     const MTU: usize = N;
     fn allocate() -> Option<NonNull<u8>> {
-        unsafe {
-            NonNull::new(alloc(Layout::array::<u8>(N).unwrap()))
-        }
+        unsafe { NonNull::new(alloc(Layout::array::<u8>(N).unwrap())) }
     }
     fn into_raw_parts(self) -> (NonNull<u8>, usize) {
         let me = ManuallyDrop::new(self);

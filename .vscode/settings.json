@@ -12,5 +12,8 @@
     "YFFR",
     "defmt",
     "Softdevice"
-  ]
+  ],
+  "[rust]": {
+    "editor.formatOnSave": true
+  }
 }

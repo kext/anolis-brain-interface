@@ -1,4 +1,6 @@
-use nrf_softdevice::ble::gatt_client::{DiscoverError, MtuExchangeError, ReadError, TryWriteError, WriteError};
+use nrf_softdevice::ble::gatt_client::{
+    DiscoverError, MtuExchangeError, ReadError, TryWriteError, WriteError,
+};
 
 /// All possible error types that can happen during operation of a GATT client.
 /// To use those errors with the question mark operator we need to implement the From trait

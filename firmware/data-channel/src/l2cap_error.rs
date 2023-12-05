@@ -1,4 +1,4 @@
-use nrf_softdevice::ble::l2cap::{SetupError, RxError, TxError, Packet};
+use nrf_softdevice::ble::l2cap::{Packet, RxError, SetupError, TxError};
 
 /// Unified error type for all L2CAP errors.
 #[derive(defmt::Format)]

@@ -120,10 +120,7 @@ async fn send_rhd_data(
 }
 
 /// Receive commands and interpret them.
-async fn receive_commands(
-    channel: l2cap::Channel<MyPacket>,
-    state: &RefCell<State>,
-) -> () {
+async fn receive_commands(channel: l2cap::Channel<MyPacket>, state: &RefCell<State>) -> () {
     if let Ok(_) = channel.rx().await {
         state.borrow_mut().should_stop = true;
     }
@@ -255,13 +252,12 @@ async fn main(spawner: Spawner) {
             let data_channel = l2cap.listen(&connection, &config, 1).await;
             let command_channel = l2cap.listen(&connection, &config, 2).await;
             if let (Ok(data_channel), Ok(command_channel)) = (data_channel, command_channel) {
-                let state = RefCell::new(State {
-                    should_stop: false,
-                });
+                let state = RefCell::new(State { should_stop: false });
                 let _result = join(
                     send_rhd_data(&mut rhd, data_channel, &state),
-                    receive_commands(command_channel, &state)
-                ).await;
+                    receive_commands(command_channel, &state),
+                )
+                .await;
                 info!("{}", _result);
             }
         }

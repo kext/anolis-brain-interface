@@ -271,7 +271,13 @@ impl SpiBuffers {
                     }
                 }
                 match CHANNEL.try_send(data) {
-                    Ok(_) => if ok { info!("Ok") } else { warn!("Not responding") },
+                    Ok(_) => {
+                        if ok {
+                            info!("Ok")
+                        } else {
+                            warn!("Not responding")
+                        }
+                    }
                     Err(_) => warn!("Frame lost!"),
                 };
             }
@@ -302,7 +308,13 @@ impl SpiBuffers {
                     }
                 }
                 match CHANNEL.try_send(data) {
-                    Ok(_) => if ok { info!("Ok") } else { warn!("Not responding") },
+                    Ok(_) => {
+                        if ok {
+                            info!("Ok")
+                        } else {
+                            warn!("Not responding")
+                        }
+                    }
                     Err(_) => warn!("Frame lost!"),
                 };
             }
