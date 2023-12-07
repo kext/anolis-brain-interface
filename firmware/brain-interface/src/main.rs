@@ -6,19 +6,19 @@
 
 extern crate alloc;
 
-use core::cell::RefCell;
+use core::{cell::RefCell, ops::BitAnd};
 
 use data_channel::{BoxPacket, L2capError};
-use defmt::{info, unwrap};
+use defmt::{info, unwrap, warn};
 use embassy_executor::Spawner;
 use embassy_futures::join::join;
 use embassy_nrf::{
     bind_interrupts,
-    gpio::{AnyPin, Level, Output, OutputDrive},
+    gpio::{AnyPin, Input, Level, Output, OutputDrive, Pull},
     interrupt, peripherals,
     uarte::{self, UarteTx},
 };
-use embassy_time::{Duration, Timer};
+use embassy_time::Timer;
 use embedded_alloc::Heap;
 use nrf_softdevice::{
     ble::{
@@ -54,16 +54,13 @@ async fn softdevice_task(sd: &'static Softdevice) -> ! {
 }
 
 #[embassy_executor::task]
-async fn blink_task(pin1: AnyPin, pin2: AnyPin, pin3: AnyPin, off: bool) -> ! {
-    let mut led_1 = Output::new(pin1, Level::from(off), OutputDrive::Standard);
-    let mut led_2 = Output::new(pin2, Level::from(off), OutputDrive::Standard);
-    let mut led_3 = Output::new(pin3, Level::from(off), OutputDrive::Standard);
+async fn blink_task(led_pin: AnyPin, chrg_pin: AnyPin) -> ! {
+    let mut led = Output::new(led_pin, Level::Low, OutputDrive::Standard);
+    let chrg_status = Input::new(chrg_pin, Pull::Up);
     loop {
         for i in 0..4 {
-            led_1.set_level(Level::from((i == 4) ^ off));
-            led_2.set_level(Level::from((i == 4) ^ off));
-            led_3.set_level(Level::from((i == 4) ^ off));
-            Timer::after(Duration::from_millis(500)).await;
+            led.set_level(Level::from(i.bitand(1) == 0 || chrg_status.is_high()));
+            Timer::after_millis(500).await;
         }
     }
 }
@@ -115,7 +112,14 @@ async fn send_rhd_data(
         for v in &d.frames {
             packet.append(&v.to_le_bytes());
         }
-        channel.tx(packet).await?;
+        channel.try_tx(packet).or_else(|e| {
+            if let l2cap::TxError::TxQueueFull(_) = e {
+                warn!("Packet lost");
+                Ok(())
+            } else {
+                Err(e)
+            }
+        })?;
     }
 }
 
@@ -194,8 +198,7 @@ async fn main(spawner: Spawner) {
         ..Default::default()
     };
 
-    let _mode: AnyPin = p.P0_19.into();
-    let _busy: AnyPin = p.P0_22.into();
+    // Pin definitions
     let _b1: AnyPin = p.P0_09.into();
     let _b2: AnyPin = p.P0_10.into();
     let _b3: AnyPin = p.P0_23.into();
@@ -203,23 +206,23 @@ async fn main(spawner: Spawner) {
     let _b5: AnyPin = p.P0_21.into();
     let _b6: AnyPin = p.P0_07.into();
 
-    let _led1: AnyPin = p.P0_00.into();
-    let _led2: AnyPin = p.P0_01.into();
-    let _led3: AnyPin = _busy;
+    let _chrg: AnyPin = p.P0_02.into();
 
-    let _rhd_cs: AnyPin = _b1;
-    let _rhd_clk: AnyPin = _b2;
-    let _rhd_mosi: AnyPin = _b3;
-    let _rhd_miso: AnyPin = _b4;
+    let _led: AnyPin = p.P1_08.into();
+
+    let _rhd_cs: AnyPin = p.P0_01.into();
+    let _rhd_clk: AnyPin = p.P0_19.into();
+    let _rhd_mosi: AnyPin = p.P0_22.into();
+    let _rhd_miso: AnyPin = p.P0_00.into();
 
     let sd = Softdevice::enable(&config);
     let l2cap = L2cap::init(sd);
 
     unwrap!(spawner.spawn(softdevice_task(sd)));
-    unwrap!(spawner.spawn(blink_task(_led1, _led2, _led3, false)));
+    unwrap!(spawner.spawn(blink_task(_led, _chrg)));
 
     // Enable UARTE, otherwise SPI3 will not work.
-    let mut uart = UarteTx::new(p.UARTE1, Irqs, _mode, Default::default());
+    let mut uart = UarteTx::new(p.UARTE1, Irqs, _b1, Default::default());
     let _ = uart.write(&[1, 2, 3]).await;
 
     let mut rhd = RHD2216::new(
