@@ -19,6 +19,12 @@ You can install it by using the command `cargo install probe-rs --features cli`.
 For debug we are using the `probe-run` tool.
 Install it with `cargo install probe-run`.
 
+## S140 Softdevice
+
+Before the firmware can be programmed to the brain interface or the dongle they must be prepared with the S140 softdevice first.
+This only needs to be done once.
+Use the command `cargo flash --chip nRF52840_xxAA --elf s140-7.3.0/s140.elf` to flash the softdevice.
+
 ## Compiling
 
 After all tools are installed the firmware can be compiled by executing `cargo build --release` in the firmware directory.
