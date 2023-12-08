@@ -14,5 +14,9 @@ nrf-softdevice-s140 = { git = "https://github.com/embassy-rs/nrf-softdevice.git"
 #nrf-softdevice = { path = "../../nrf-softdevice/nrf-softdevice" }
 #nrf-softdevice-s140 = { path = "../../nrf-softdevice/nrf-softdevice-s140" }
 
+[profile.dev]
+opt-level = "s"
+
 [profile.release]
 debug = 2
+opt-level = "s"

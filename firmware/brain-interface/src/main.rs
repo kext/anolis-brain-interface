@@ -96,7 +96,7 @@ struct State {
 /// Start the RHD and keep sending data packets over the L2CAP channel.
 async fn send_rhd_data(
     rhd: &mut RHD2216<'_>,
-    channel: l2cap::Channel<MyPacket>,
+    channel: &l2cap::Channel<MyPacket>,
     state: &RefCell<State>,
 ) -> Result<(), L2capError<MyPacket>> {
     info!("Starting");
@@ -124,7 +124,7 @@ async fn send_rhd_data(
 }
 
 /// Receive commands and interpret them.
-async fn receive_commands(channel: l2cap::Channel<MyPacket>, state: &RefCell<State>) -> () {
+async fn receive_commands(channel: &l2cap::Channel<MyPacket>, state: &RefCell<State>) -> () {
     if let Ok(_) = channel.rx().await {
         state.borrow_mut().should_stop = true;
     }
@@ -189,11 +189,11 @@ async fn main(spawner: Spawner) {
             ),
         }),
         conn_l2cap: Some(raw::ble_l2cap_conn_cfg_t {
-            ch_count: 2,
+            ch_count: 1,
             rx_mps: 256,
             tx_mps: 256,
             rx_queue_size: 3,
-            tx_queue_size: 20,
+            tx_queue_size: data_channel::QUEUE_SIZE,
         }),
         ..Default::default()
     };
@@ -241,7 +241,7 @@ async fn main(spawner: Spawner) {
     loop {
         info!("Waiting for connection");
         let config = peripheral::Config {
-            tx_power: TxPower::ZerodBm,
+            tx_power: TxPower::Plus8dBm,
             secondary_phy: Phy::M2,
             interval: 160,
             ..Default::default()
@@ -252,13 +252,12 @@ async fn main(spawner: Spawner) {
         {
             info!("advertising done! I have a connection.");
             let config = nrf_softdevice::ble::l2cap::Config { credits: 3 };
-            let data_channel = l2cap.listen(&connection, &config, 1).await;
-            let command_channel = l2cap.listen(&connection, &config, 2).await;
-            if let (Ok(data_channel), Ok(command_channel)) = (data_channel, command_channel) {
+            let channel = l2cap.listen(&connection, &config, data_channel::PSM).await;
+            if let Ok(channel) = channel {
                 let state = RefCell::new(State { should_stop: false });
                 let _result = join(
-                    send_rhd_data(&mut rhd, data_channel, &state),
-                    receive_commands(command_channel, &state),
+                    send_rhd_data(&mut rhd, &channel, &state),
+                    receive_commands(&channel, &state),
                 )
                 .await;
                 info!("{}", _result);

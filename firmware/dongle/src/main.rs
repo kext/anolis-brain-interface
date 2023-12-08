@@ -182,20 +182,19 @@ impl From<EndpointError> for ConnectionError {
 
 /// Receive data from the L2CAP channel and forward it to the USB interface.
 async fn handle_connection(
-    data_channel: l2cap::Channel<MyPacket>,
-    command_channel: l2cap::Channel<MyPacket>,
+    channel: l2cap::Channel<MyPacket>,
     usb_sender: &mut webusb::Sender<'static, MyDriver>,
 ) -> Result<(), ConnectionError> {
     let mut stopped = false;
     loop {
         if !usb_active() && !stopped {
-            command_channel
+            channel
                 .tx(MyPacket::new().ok_or(ConnectionError {})?)
                 .await
                 .map_err(|_| ConnectionError {})?;
             stopped = true;
         }
-        let packet = data_channel.rx().await?;
+        let packet = channel.rx().await?;
         usb_sender.write(&packet).await?;
     }
 }
@@ -259,10 +258,10 @@ async fn main(spawner: Spawner) {
             ),
         }),
         conn_l2cap: Some(raw::ble_l2cap_conn_cfg_t {
-            ch_count: 2,
+            ch_count: 1,
             rx_mps: 256,
             tx_mps: 256,
-            rx_queue_size: 20,
+            rx_queue_size: data_channel::QUEUE_SIZE,
             tx_queue_size: 3,
         }),
         ..Default::default()
@@ -291,6 +290,7 @@ async fn main(spawner: Spawner) {
         info!("Connecting ...");
         let mut config = ScanConfig::default();
         config.timeout = 200;
+        config.tx_power = TxPower::Plus8dBm;
         let addr = match central::scan(sd, &config, |adv_report| {
             if adv_data::supports_data_service(adv_report) {
                 Some(adv_report.peer_addr.addr)
@@ -306,8 +306,6 @@ async fn main(spawner: Spawner) {
         info!("Found {:?}", addr);
         let whitelist = [&Address::new(AddressType::RandomStatic, addr)];
         config.whitelist = Some(&whitelist[..]);
-        config.phys = PhySet::M2;
-        config.tx_power = TxPower::Plus8dBm;
         match central::connect(
             sd,
             &ConnectConfig {
@@ -329,14 +327,12 @@ async fn main(spawner: Spawner) {
                     warn!("Could not upgrade to 2M PHY");
                 }
                 info!("MTU {}", connection.att_mtu());
-                let config = nrf_softdevice::ble::l2cap::Config { credits: 20 };
-                let data_channel = l2cap.setup(&connection, &config, 1).await;
-                let command_channel = l2cap.setup(&connection, &config, 2).await;
-                if let (Ok(data_channel), Ok(command_channel)) = (data_channel, command_channel) {
-                    if handle_connection(data_channel, command_channel, &mut usb_sender)
-                        .await
-                        .is_err()
-                    {
+                let config = nrf_softdevice::ble::l2cap::Config {
+                    credits: data_channel::QUEUE_SIZE as u16,
+                };
+                let channel = l2cap.setup(&connection, &config, data_channel::PSM).await;
+                if let Ok(channel) = channel {
+                    if handle_connection(channel, &mut usb_sender).await.is_err() {
                         info!("Connection ended");
                     }
                 }
