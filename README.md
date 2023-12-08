@@ -11,3 +11,7 @@ See the [Readme there](pcb/README.md) for instructions to setup your work enviro
 
 The firmware for the brain interface and the dongle is in the [`firmware`](firmware) directory.
 There you can find more information how to compile, flash and run the firmware on your device.
+
+## Licence
+
+The source code and PCB design files are dual licenced under the [MIT](LICENCE-MIT) and [Apache 2.0](LICENCE-APACHE) licences.
