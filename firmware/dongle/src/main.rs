@@ -143,8 +143,8 @@ const USB_TIMEOUT: Duration = Duration::from_secs(1);
 
 fn usb_active() -> bool {
     critical_section::with(|cs| {
-        let state = STATE.borrow_ref(cs);
-        state
+        STATE
+            .borrow_ref(cs)
             .last_usb_activity
             .map_or(false, |t| t + USB_TIMEOUT > Instant::now())
     })
@@ -313,8 +313,8 @@ async fn main(spawner: Spawner) {
                 scan_config: config,
                 conn_params: raw::ble_gap_conn_params_t {
                     conn_sup_timeout: 100,
-                    min_conn_interval: 40,
-                    max_conn_interval: 40,
+                    min_conn_interval: 16,
+                    max_conn_interval: 16,
                     slave_latency: 0,
                 },
             },
