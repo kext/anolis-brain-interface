@@ -1,4 +1,9 @@
 const ms = n => new Promise(resolve => setTimeout(resolve, n))
+const pad = n => (n < 10 ? '0' : '') + n
+const now = () => {
+  let t = new Date()
+  return t.getFullYear() + pad(t.getMonth() + 1) + pad(t.getDate()) + '-' + pad(t.getHours()) + pad(t.getMinutes())
+}
 const app = Vue.createApp({
   data() {
     return {
@@ -7,6 +12,8 @@ const app = Vue.createApp({
       transferred: 0,
       plots: [],
       running: false,
+      recording: [],
+      recordingSize: 0
     }
   },
   computed: {
@@ -33,16 +40,11 @@ const app = Vue.createApp({
       }
     },
     clearPlots(count) {
-      //const colors = ['#09d', '#c12', '#fa2', '#8a2']
-      //const colors = ['#09d']
-      const colors = [
-        '#b1667e', '#b16c4c', '#977d30', '#668e4f', '#239382', '#2b8cad', '#697dbc', '#976da9'
-      ]
       let plots = []
       for (let i = 0; i < count; ++i) {
         plots.push(Vue.shallowRef({
           name: 'Channel ' + (i + 1),
-          color: colors[i % colors.length],
+          color: `oklch(69% 0.15 ${Math.round(360 * i / count)})`,
           data: []
         }))
       }
@@ -59,6 +61,7 @@ const app = Vue.createApp({
           let d = await device.transferIn(1, 2048)
           if (d.status === 'ok') {
             this.transferred += d.data.byteLength
+            this.recordPacket(d.data)
             if (d.data.byteLength > 2) {
               let channels = d.data.getUint8(1)
               let frame = []
@@ -103,6 +106,35 @@ const app = Vue.createApp({
         }
         await ms(100)
       }
+    },
+    recordPacket(packet) {
+      const header = new DataView(new ArrayBuffer(16))
+      header.setUint32(0, 0x55daba, true)
+      header.setUint32(4, header.byteLength + packet.byteLength, true)
+      header.setBigUint64(8, BigInt(Date.now()), true)
+      this.recording.push(header, packet)
+      this.recordingSize += header.byteLength + packet.byteLength
+    },
+    save() {
+      const blob = new Blob(this.recording, { type: 'application/octet-stream' })
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(blob)
+      a.download = `brain-recording-${now()}.bin`
+      setTimeout(() => {
+        URL.revokeObjectURL(blob)
+      }, 1000)
+      a.click()
+    },
+    formatSize(bytes) {
+      if (bytes < 1000) {
+        return bytes + 'B'
+      } else if (bytes < 1e6) {
+        return (bytes / 1000).toFixed(5 - Math.floor(Math.log10(bytes))) + 'kB'
+      } else if (bytes < 1e9) {
+        return (bytes / 1e6).toFixed(8 - Math.floor(Math.log10(bytes))) + 'MB'
+      } else {
+        return (bytes / 1e9).toFixed(11 - Math.floor(Math.log10(bytes))) + 'GB'
+      }
     }
   },
   mounted() {
@@ -116,3 +148,12 @@ const app = Vue.createApp({
 .use(plot)
 .use(icons)
 .mount('body')
+window.addEventListener('keydown', e => {
+  if (e.key === 'f') {
+    if (document.fullscreenElement) {
+      document.exitFullscreen()
+    } else {
+      document.querySelector('html').requestFullscreen()
+    }
+  }
+})

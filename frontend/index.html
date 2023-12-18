@@ -29,7 +29,14 @@
         </button>
       </div>
       <div style="flex-grow:1"></div>
-      <div v-if="start > 0">
+      <div v-if="recordingSize > 0">
+        {{formatSize(recordingSize)}}
+        <button @click="save()">
+          <icon-download-16></icon-download-16>
+          Save Data
+        </button>
+      </div>
+      <div v-if="start > 0 && false">
         {{transferred}} ({{speed}})
       </div>
     </div>
