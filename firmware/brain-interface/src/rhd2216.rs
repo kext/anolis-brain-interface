@@ -29,11 +29,11 @@ const SKIP_CHANNELS: usize = 4;
 pub const FRAMES_PER_BUFFER: usize = 50;
 /// How many commands to send for each frame. Must be at least [`CHANNEL_COUNT`] + 2.
 const STRIDE: usize = 10;
-/// Number of 16MHz ticks between two commands
+/// Number of 16MHz ticks between two commands.
 const TIMER_INTERVAL: usize = 640;
 /// Size of one full buffer between interrupts.
 const BUFFER_SIZE: usize = FRAMES_PER_BUFFER * STRIDE;
-/// How much overflow space to leave after ever buffer.
+/// How much overflow space to leave after every buffer.
 const OVERFLOW: usize = BUFFER_SIZE;
 /// Total buffer space.
 const TOTAL_BUFFER: usize = BUFFER_SIZE + OVERFLOW;
@@ -127,10 +127,16 @@ enum State {
 
 /// Buffer space for the SPI.
 struct SpiBuffers {
+    /// Transmit buffer.
     tx: [u16; TOTAL_BUFFER],
+    /// Receive buffer 1.
     rx1: [u16; TOTAL_BUFFER],
+    /// Receive buffer 2.
     rx2: [u16; TOTAL_BUFFER],
+    /// ADC state.
     state: State,
+    /// Sequence number for the next packet.
+    /// Can be used to detect dropped packets.
     sequence_number: usize,
 }
 
